@@ -1,9 +1,11 @@
 export type HealthBand = "green" | "yellow" | "red"
 export type CommercialLevel = 0 | 1 | 2
+export type ProjectFase = "Onboarding" | "Aktiv" | "Avsluttende" | "Pause"
 
 export interface Customer {
   id: string
   name: string
+  email?: string     // customer contact email — used to match Google Calendar attendees
   type: "SEO/Ads" | "Utvikling" | "Hosting" | "Annet"
   market: string
   rev: number        // kr/år in thousands
@@ -14,6 +16,9 @@ export interface Customer {
   score: number      // 0-100, draggable in UI
   commercial: CommercialLevel
   goal: string
+  retainer: boolean  // true = recurring retainer, false = project
+  nextStep?: string  // for project customers: what's next
+  fase?: ProjectFase // for project customers: current phase
   band?: HealthBand
 }
 

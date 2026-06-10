@@ -26,13 +26,49 @@ export async function GET(request: Request) {
       orderBy: "startTime",
     })
 
-    const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+    // Fetch all calendars the user has access to
+    const calListRes = await fetch(
+      "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50",
       { headers: { Authorization: `Bearer ${accessToken}` } }
     )
-    if (!res.ok) throw new Error(`Google Calendar: ${res.status}`)
-    const data = await res.json()
-    const events: any[] = data.items ?? []
+    const calList = calListRes.ok ? await calListRes.json() : { items: [] }
+    const allCals: any[] = calList.items ?? []
+
+    // Include: own @salesup.no calendars, shared/team calendars (not gmail/holiday/etc)
+    const relevantCals = allCals.filter((cal: any) => {
+      const id: string = cal.id ?? ""
+      if (id === "primary") return true
+      if (id.endsWith("@salesup.no")) return true
+      // shared calendars: not gmail, not group.v.calendar.google.com holiday/contact
+      if (id.includes("holiday") || id.includes("contact") || id.endsWith("@gmail.com")) return false
+      // include other calendars the user has explicitly added (shared team calendars)
+      return cal.accessRole === "owner" || cal.accessRole === "writer" || cal.accessRole === "reader"
+    })
+
+    // Fetch events from all relevant calendars in parallel
+    const calEventFetches = relevantCals.map((cal: any) =>
+      fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?${params}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      )
+        .then(r => r.ok ? r.json() : { items: [] })
+        .then(d => d.items ?? [])
+        .catch(() => [])
+    )
+    const calResults = await Promise.all(calEventFetches)
+
+    // Merge and deduplicate by event ID
+    const seenIds = new Set<string>()
+    const events: any[] = []
+    for (const batch of calResults) {
+      for (const evt of batch) {
+        const key = evt.id ?? evt.iCalUID ?? JSON.stringify(evt)
+        if (!seenIds.has(key)) {
+          seenIds.add(key)
+          events.push(evt)
+        }
+      }
+    }
 
     // Count meetings per month (events with ≥2 attendees or "møte" in title)
     const monthMap = new Map<string, number>()
@@ -42,11 +78,14 @@ export async function GET(request: Request) {
       monthMap.set(MONTHS_NO[d.getMonth()], 0)
     }
 
-    const allEvents: Array<{ summary: string; date: string }> = []
+    const allEvents: Array<{ summary: string; date: string; attendeeEmails: string[] }> = []
     for (const evt of events) {
       const start = evt.start?.dateTime ?? evt.start?.date
       if (!start) continue
-      allEvents.push({ summary: (evt.summary ?? "").toLowerCase(), date: start })
+      const attendeeEmails: string[] = (evt.attendees ?? [])
+        .map((a: any) => (a.email ?? "").toLowerCase())
+        .filter((e: string) => e && !e.endsWith("@resource.calendar.google.com"))
+      allEvents.push({ summary: (evt.summary ?? "").toLowerCase(), date: start, attendeeEmails })
       const key = MONTHS_NO[new Date(start).getMonth()]
       if (!monthMap.has(key)) continue
       const isCustomerMeeting =

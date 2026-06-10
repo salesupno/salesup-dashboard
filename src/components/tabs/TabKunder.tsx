@@ -19,7 +19,7 @@ const COMM_LEVELS = [
 const bandOf = (s: number): HealthBand =>
   s >= 72 ? "green" : s >= 55 ? "yellow" : "red"
 
-const isRetainer = (c: Customer) => c.type === "SEO/Ads"
+const isRetainer = (c: Customer) => c.retainer === true
 
 const tenureTxt = (m: number) =>
   m >= 12
@@ -98,6 +98,14 @@ function CustomerCard({
               {c.rev}k kr/år · {c.owner}
             </span>
           </div>
+          {/* Customer email for Calendar matching */}
+          <input
+            className="cs-textfield"
+            value={c.email ?? ""}
+            onChange={(e) => onUpdate(c.id, { email: e.target.value })}
+            placeholder="kontakt@kunde.no — for kalenderkobling"
+            style={{ marginTop: 6, fontSize: 12.5, color: "var(--ink-3)", padding: "6px 10px" }}
+          />
         </div>
         <button
           className="cs-del"
@@ -163,7 +171,7 @@ function CustomerCard({
 }
 
 function AddCustomerForm({ onAdd, onCancel }: { onAdd: (c: Customer) => void; onCancel: () => void }) {
-  const [f, setF] = useState({ name: "", type: "SEO/Ads" as Customer["type"], rev: "", owner: "", health: "green" as HealthBand })
+  const [f, setF] = useState({ name: "", email: "", type: "SEO/Ads" as Customer["type"], rev: "", owner: "", health: "green" as HealthBand, retainer: true })
   const up = <K extends keyof typeof f>(k: K, v: typeof f[K]) => setF((p) => ({ ...p, [k]: v }))
   const inp: React.CSSProperties = { fontFamily: "var(--font)", fontSize: 14, padding: "11px 14px", borderRadius: 12, border: "1px solid var(--hairline)", background: "var(--surface)", color: "var(--ink)", outline: "none", width: "100%" }
   const lab: React.CSSProperties = { fontSize: 12, color: "var(--ink-3)", fontWeight: 600, marginBottom: 7, display: "block" }
@@ -175,6 +183,7 @@ function AddCustomerForm({ onAdd, onCancel }: { onAdd: (c: Customer) => void; on
     onAdd({
       id: "k" + Date.now(),
       name: f.name.trim(),
+      email: f.email.trim() || undefined,
       type: f.type,
       market: "NO",
       rev: Number(f.rev) || 0,
@@ -185,6 +194,8 @@ function AddCustomerForm({ onAdd, onCancel }: { onAdd: (c: Customer) => void; on
       score,
       commercial,
       goal: "",
+      retainer: f.retainer,
+      fase: f.retainer ? undefined : "Onboarding",
     })
   }
 
@@ -196,6 +207,12 @@ function AddCustomerForm({ onAdd, onCancel }: { onAdd: (c: Customer) => void; on
           <label style={lab}>Kundenavn</label>
           <input style={inp} value={f.name} onChange={(e) => up("name", e.target.value)} placeholder="F.eks. Fjordsol AS" autoFocus />
         </div>
+        <div>
+          <label style={lab}>Kontaktepost (for kalenderkobling)</label>
+          <input style={inp} value={f.email} onChange={(e) => up("email", e.target.value)} placeholder="kontakt@kunde.no" type="email" />
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1.8fr", gap: 18, marginBottom: 16 }}>
         <div>
           <label style={lab}>Kundetype</label>
           <div style={{ display: "flex", gap: 8 }}>
@@ -211,6 +228,25 @@ function AddCustomerForm({ onAdd, onCancel }: { onAdd: (c: Customer) => void; on
                 }}
               >
                 {t}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label style={lab}>Kundeforhold</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            {([true, false] as const).map((r) => (
+              <button
+                key={String(r)}
+                onClick={() => up("retainer", r)}
+                style={{
+                  flex: 1, cursor: "pointer", fontFamily: "var(--font)",
+                  border: "1.5px solid " + (f.retainer === r ? "var(--c-deep)" : "var(--hairline)"),
+                  background: f.retainer === r ? "var(--green-soft)" : "var(--surface)",
+                  borderRadius: 12, padding: "10px 8px", fontSize: 12.5, fontWeight: 600, color: "var(--ink)",
+                }}
+              >
+                {r ? "Retainer" : "Prosjekt"}
               </button>
             ))}
           </div>
@@ -264,7 +300,7 @@ export default function TabKunder() {
   }, [customers])
 
   // Live data: lastContact from Google Calendar, tenure from Copper CRM
-  const [calendarEvents, setCalendarEvents] = useState<Array<{ summary: string; date: string }>>([])
+  const [calendarEvents, setCalendarEvents] = useState<Array<{ summary: string; date: string; attendeeEmails: string[] }>>([])
   const [copperCustomers, setCopperCustomers] = useState<Array<{ id: string; name: string; tenure: number; lastContact: string | null }>>([])
 
   useEffect(() => {
@@ -278,12 +314,18 @@ export default function TabKunder() {
       .catch(() => {})
   }, [])
 
-  // Update lastContact from Google Calendar (match customer name in event title)
+  // Update lastContact from Google Calendar
+  // Primary match: attendee email === customer email
+  // Fallback: customer name's first word appears in event title
   useEffect(() => {
     if (!calendarEvents.length) return
     setCustomers(prev => prev.map(c => {
-      const name = c.name.toLowerCase().split(" ")[0]
-      const matches = calendarEvents.filter(e => e.summary.includes(name))
+      const custEmail = c.email?.toLowerCase()
+      const nameWord = c.name.toLowerCase().split(" ")[0]
+      const matches = calendarEvents.filter(e =>
+        (custEmail && e.attendeeEmails.includes(custEmail)) ||
+        (!custEmail && e.summary.includes(nameWord))
+      )
       if (!matches.length) return c
       const latest = matches.reduce((a, b) => a.date > b.date ? a : b)
       if (!latest.date) return c
