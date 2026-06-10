@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react"
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
+import Image from "next/image"
 
 function LoginContent() {
   const params = useSearchParams()
@@ -27,14 +28,15 @@ function LoginContent() {
         textAlign: "center",
       }}>
         {/* Logo / brand */}
-        <div style={{
-          fontSize: 26,
-          fontWeight: 800,
-          letterSpacing: "-.03em",
-          color: "var(--ink)",
-          marginBottom: 8,
-        }}>
-          SalesUp
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+          <Image
+            src="/salesup-logo.png"
+            alt="SalesUp"
+            width={160}
+            height={44}
+            style={{ objectFit: "contain" }}
+            priority
+          />
         </div>
         <div style={{
           fontSize: 13.5,
