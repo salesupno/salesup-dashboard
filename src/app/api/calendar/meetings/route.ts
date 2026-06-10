@@ -5,18 +5,21 @@ export const dynamic = "force-dynamic"
 
 const MONTHS_NO = ["Jan","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Des"]
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const months = Math.min(12, Math.max(1, parseInt(searchParams.get("months") ?? "6", 10)))
+
   try {
     const session = await auth()
     const accessToken = session?.accessToken
     if (!accessToken) throw new Error("No access token — re-login required for calendar access")
 
     const now = new Date()
-    const sixAgo = new Date(now)
-    sixAgo.setMonth(sixAgo.getMonth() - 6)
+    const from = new Date(now)
+    from.setMonth(from.getMonth() - months)
 
     const params = new URLSearchParams({
-      timeMin: sixAgo.toISOString(),
+      timeMin: from.toISOString(),
       timeMax: now.toISOString(),
       maxResults: "500",
       singleEvents: "true",
@@ -33,7 +36,7 @@ export async function GET() {
 
     // Count meetings per month (events with ≥2 attendees or "møte" in title)
     const monthMap = new Map<string, number>()
-    for (let i = 5; i >= 0; i--) {
+    for (let i = months - 1; i >= 0; i--) {
       const d = new Date(now)
       d.setMonth(d.getMonth() - i)
       monthMap.set(MONTHS_NO[d.getMonth()], 0)

@@ -242,25 +242,24 @@ function MeetingsWins({ data }: { data: MeetingMonth[] }) {
   )
 }
 
-export default function TabOversikt() {
+export default function TabOversikt({ period = 3 }: { period?: number }) {
   const [liveRevenue, setLiveRevenue] = useState({ ...REVENUE })
   const [liveMeetings, setLiveMeetings] = useState<MeetingMonth[]>(MEETINGS)
   const [livePipeline, setLivePipeline] = useState({ ...PIPELINE })
 
   useEffect(() => {
-    fetch("/api/tripletex/revenue")
+    fetch(`/api/tripletex/revenue?months=${period}`)
       .then(r => r.json())
       .then(d => { if (d.omsMnd) setLiveRevenue({ omsMnd: d.omsMnd, omsMndTarget: d.omsMndTarget, mrr: d.mrr, mrrTarget: d.mrrTarget }) })
       .catch(() => {})
-    fetch("/api/calendar/meetings")
+    fetch(`/api/calendar/meetings?months=${period}`)
       .then(r => r.json())
       .then(d => { if (d.monthly?.length) setLiveMeetings(d.monthly) })
       .catch(() => {})
     fetch("/api/copper/pipeline")
       .then(r => r.json())
       .then(d => { if (d.pipeline) setLivePipeline(d.pipeline) })
-      .catch(() => {})
-  }, [])
+  }, [period])
 
   const omsMnd = liveRevenue.omsMnd
   const omsMal = liveRevenue.omsMndTarget
@@ -280,7 +279,7 @@ export default function TabOversikt() {
           </span>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "center" }}>
             {[
-              { label: "Omsetning / mnd", cur: omsMnd, mal: omsMal, color: "#4E8A39" },
+              { label: period === 1 ? "Omsetning / mnd" : `Snitt / mnd (${period} mnd)`, cur: omsMnd, mal: omsMal, color: "#4E8A39" },
               { label: "MRR (gjentakende)", cur: mrr, mal: mrrMal, color: "#6BA84F" },
             ].map((w, i) => (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center", padding: "2px 0" }}>

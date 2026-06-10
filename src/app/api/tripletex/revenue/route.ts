@@ -38,26 +38,31 @@ async function sumInvoices(authHeader: string, from: string, to: string): Promis
   return values.reduce((s, inv) => s + (inv.amount ?? 0), 0)
 }
 
-export const revalidate = 300
+export const dynamic = "force-dynamic"
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const months = Math.min(12, Math.max(1, parseInt(searchParams.get("months") ?? "1", 10)))
+
   try {
     const authHeader = await createSession()
     const now = new Date()
 
-    // Current month revenue
-    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    const omsMnd = Math.round(await sumInvoices(authHeader, fmt(firstOfMonth), fmt(now)))
+    // Revenue for requested period
+    const fromDate = new Date(now)
+    fromDate.setMonth(fromDate.getMonth() - months)
+    const periodTotal = Math.round(await sumInvoices(authHeader, fmt(fromDate), fmt(now)))
+    const omsMnd = months === 1 ? periodTotal : Math.round(periodTotal / months)
 
-    // MRR approximation: average of last 3 months
-    const threeMonthsAgo = new Date(now)
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-    const total3m = await sumInvoices(authHeader, fmt(threeMonthsAgo), fmt(now))
+    // MRR: average of last 3 months regardless of period
+    const threeAgo = new Date(now)
+    threeAgo.setMonth(threeAgo.getMonth() - 3)
+    const total3m = await sumInvoices(authHeader, fmt(threeAgo), fmt(now))
     const mrr = Math.round(total3m / 3)
 
-    return NextResponse.json({ omsMnd, omsMndTarget: 500000, mrr, mrrTarget: 400000, source: "tripletex" })
+    return NextResponse.json({ omsMnd, omsMndTarget: 500000, mrr, mrrTarget: 400000, months, source: "tripletex" })
   } catch (err) {
     console.error("Tripletex error:", err)
-    return NextResponse.json({ omsMnd: 312000, omsMndTarget: 500000, mrr: 290000, mrrTarget: 400000, source: "mock" })
+    return NextResponse.json({ omsMnd: 312000, omsMndTarget: 500000, mrr: 290000, mrrTarget: 400000, months, source: "mock" })
   }
 }

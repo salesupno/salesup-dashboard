@@ -17,6 +17,7 @@ const TABS = [
 
 export default function DashboardShell() {
   const [tab, setTab] = useState("oversikt")
+  const [period, setPeriod] = useState(3)
   const { data: session } = useSession()
   const t = TABS.find((x) => x.id === tab)!
 
@@ -77,14 +78,28 @@ export default function DashboardShell() {
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ display: "flex", gap: 12 }}>
-          <button className="pill-btn ghost">
-            <Icon name="calendar" size={16} />
-            <span style={{ display: "flex", flexDirection: "column", lineHeight: 1, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 500 }}>Periode</span>
-              <span>Siste 3 måneder</span>
-            </span>
-            <Icon name="chevron-r" size={14} style={{ transform: "rotate(90deg)", color: "var(--ink-3)" }} />
-          </button>
+          <div style={{ position: "relative" }}>
+            <button className="pill-btn ghost" style={{ padding: "0 14px 0 10px" }}>
+              <Icon name="calendar" size={16} />
+              <span style={{ display: "flex", flexDirection: "column", lineHeight: 1, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 500 }}>Periode</span>
+                <span>Siste {period} måneder</span>
+              </span>
+              <Icon name="chevron-r" size={14} style={{ transform: "rotate(90deg)", color: "var(--ink-3)" }} />
+            </button>
+            <select
+              value={period}
+              onChange={e => setPeriod(Number(e.target.value))}
+              aria-label="Velg periode"
+              style={{
+                position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%",
+              }}
+            >
+              {[1, 3, 6, 12].map(m => (
+                <option key={m} value={m}>Siste {m} måneder</option>
+              ))}
+            </select>
+          </div>
           <button className="pill-btn">
             <Icon name="download" size={16} /> Eksporter
           </button>
@@ -92,7 +107,7 @@ export default function DashboardShell() {
       </div>
 
       {/* ---- Tab content ---- */}
-      {tab === "oversikt"  && <TabOversikt />}
+      {tab === "oversikt"  && <TabOversikt period={period} />}
       {tab === "kunder"    && <TabKunder />}
       {tab === "kapasitet" && <TabKapasitet />}
 
