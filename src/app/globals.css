@@ -1,26 +1,411 @@
 @import "tailwindcss";
 
+/* ============================================================
+   SalesUp CEO Dashboard — design tokens
+   ============================================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg:         #F4F2EB;
+  --surface:    #FFFFFF;
+  --cream:      #EDE9DF;
+  --green-bg:   #E8F5D0;
+  --hairline:   #ECE8DC;
+  --hairline-2: #F2EFE6;
+
+  --ink:   #1B1C16;
+  --ink-2: #5C5D52;
+  --ink-3: #9A9B8E;
+
+  --green:      #4E8A39;
+  --green-dot:  #6BA84F;
+  --green-soft: #EAF3DC;
+  --yellow:     #9C7411;
+  --yellow-dot: #E2A92F;
+  --yellow-soft:#F8EFD6;
+  --red:        #B23A2E;
+  --red-dot:    #D24B3B;
+  --red-soft:   #F8E2DD;
+
+  --c-light: #D8EDB6;
+  --c-mid:   #A9D77D;
+  --c-deep:  #6BA84F;
+
+  --r:    26px;
+  --r-md: 20px;
+  --r-sm: 14px;
+
+  --shadow:    0 1px 2px rgba(27,28,22,.03), 0 10px 30px rgba(27,28,22,.04);
+  --shadow-sm: 0 1px 2px rgba(27,28,22,.04);
+  --shadow-lg: 0 18px 50px rgba(27,28,22,.14);
+
+  --font: var(--font-schibsted), system-ui, -apple-system, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ---- Shell / layout ---- */
+.shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 40px 40px;
 }
+
+/* ---- Cards ---- */
+.card {
+  background: var(--surface);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+.card.bordered {
+  border: 1.5px solid var(--hairline);
+  box-shadow: none;
+}
+.card.lift {
+  cursor: pointer;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.card.lift:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* ---- Navigation pill ---- */
+.nav {
+  display: inline-flex;
+  align-items: center;
+  background: var(--hairline-2);
+  border-radius: 999px;
+  padding: 5px;
+  gap: 3px;
+}
+.nav button {
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  padding: 8px 22px;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all .15s ease;
+  white-space: nowrap;
+}
+.nav button:hover {
+  background: rgba(255,255,255,.6);
+  color: var(--ink);
+}
+.nav button.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+/* ---- Top bar ---- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 0 0;
+  margin-bottom: 8px;
+}
+
+/* ---- Pill buttons ---- */
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all .15s ease;
+  background: var(--ink);
+  color: #fff;
+  white-space: nowrap;
+}
+.pill-btn:hover { opacity: .88; }
+.pill-btn.ghost {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1.5px solid var(--hairline);
+}
+.pill-btn.ghost:hover {
+  background: var(--hairline-2);
+  border-color: var(--hairline);
+}
+
+/* ---- Round icon button ---- */
+.round-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all .14s ease;
+  flex: none;
+}
+.round-btn:hover {
+  background: var(--hairline-2);
+  color: var(--ink);
+}
+
+/* ---- Avatar ---- */
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--green-bg);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  flex: none;
+}
+
+/* ---- Status dot ---- */
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+.dot.green  { background: var(--green-dot); }
+.dot.yellow { background: var(--yellow-dot); }
+.dot.red    { background: var(--red-dot); }
+.dot.lg     { width: 13px; height: 13px; }
+
+/* ---- Capacity sliders ---- */
+.cap-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--hairline-2);
+  outline: none;
+  cursor: pointer;
+}
+.cap-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--c-deep);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform .1s ease;
+}
+.cap-slider::-webkit-slider-thumb:hover { transform: scale(1.1); }
+.cap-slider::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--c-deep);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+
+/* ---- Stepper button ---- */
+.cap-step {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-family: var(--font);
+  transition: all .14s ease;
+  flex: none;
+}
+.cap-step:hover {
+  background: var(--green-bg);
+  color: var(--ink);
+  border-color: var(--c-mid);
+}
+
+/* ---- Customer success select ---- */
+.cs-select {
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1.5px solid var(--hairline);
+  background: var(--surface);
+  border-radius: 11px;
+  padding: 9px 12px;
+  outline: none;
+  max-width: 200px;
+  transition: border-color .14s ease;
+}
+.cs-select:focus { box-shadow: 0 0 0 2px var(--green-bg); }
+
+.cs-bigselect {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 44px 12px 20px;
+  background: var(--ink) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 18px center;
+  transition: transform .12s ease;
+}
+.cs-bigselect:hover { transform: translateY(-1px); }
+.cs-bigselect:focus { outline: none; box-shadow: 0 0 0 3px var(--green-bg); }
+
+.cs-typemini {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1.5px solid var(--hairline);
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239A9B8E' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center;
+  border-radius: 8px;
+  padding: 5px 24px 5px 10px;
+  outline: none;
+  color: var(--ink-2);
+}
+.cs-typemini:focus { box-shadow: 0 0 0 2px var(--green-bg); }
+
+.cs-textfield {
+  width: 100%;
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--hairline);
+  border-radius: 14px;
+  padding: 12px 15px;
+  outline: none;
+  transition: border-color .14s ease, box-shadow .14s ease;
+}
+.cs-textfield::placeholder { color: var(--ink-3); font-weight: 500; }
+.cs-textfield:focus {
+  border-color: var(--c-deep);
+  box-shadow: 0 0 0 3px var(--green-bg);
+}
+
+.cs-del {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all .14s ease;
+}
+.cs-del:hover {
+  color: var(--red);
+  background: var(--red-soft);
+  border-color: var(--red-soft);
+}
+
+/* ---- Badge / spill ---- */
+.spill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+.spill.green {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+/* ---- Logo ---- */
+.logo {
+  height: 28px;
+  width: auto;
+  flex: none;
+}
+
+/* ---- Inline editable number ---- */
+.edit-num {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  min-width: 1ch;
+  padding: 0;
+  border-bottom: 1.5px dashed var(--hairline);
+  transition: border-color .12s ease;
+}
+.edit-num:focus {
+  border-bottom-color: var(--c-deep);
+}
+.edit-num.dark {
+  color: #fff;
+  border-bottom-color: rgba(255,255,255,.3);
+}
+
+/* ---- Tab view ---- */
+.tabview {
+  padding-bottom: 10px;
+}
+
+/* ---- Search input ---- */
+.search-input {
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--hairline);
+  border-radius: 999px;
+  padding: 9px 16px 9px 38px;
+  outline: none;
+  transition: border-color .14s ease, box-shadow .14s ease;
+  width: 200px;
+}
+.search-input:focus {
+  border-color: var(--c-deep);
+  box-shadow: 0 0 0 3px var(--green-bg);
+}
+
