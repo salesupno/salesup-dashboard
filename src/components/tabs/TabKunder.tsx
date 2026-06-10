@@ -263,6 +263,50 @@ export default function TabKunder() {
     try { localStorage.setItem(CUST_KEY, JSON.stringify(customers)) } catch {}
   }, [customers])
 
+  // Live data: lastContact from Google Calendar, tenure from Copper CRM
+  const [calendarEvents, setCalendarEvents] = useState<Array<{ summary: string; date: string }>>([])
+  const [copperCustomers, setCopperCustomers] = useState<Array<{ id: string; name: string; tenure: number; lastContact: string | null }>>([])
+
+  useEffect(() => {
+    fetch("/api/calendar/meetings")
+      .then(r => r.json())
+      .then(d => { if (d.allEvents?.length) setCalendarEvents(d.allEvents) })
+      .catch(() => {})
+    fetch("/api/copper/pipeline")
+      .then(r => r.json())
+      .then(d => { if (d.customers?.length) setCopperCustomers(d.customers) })
+      .catch(() => {})
+  }, [])
+
+  // Update lastContact from Google Calendar (match customer name in event title)
+  useEffect(() => {
+    if (!calendarEvents.length) return
+    setCustomers(prev => prev.map(c => {
+      const name = c.name.toLowerCase().split(" ")[0]
+      const matches = calendarEvents.filter(e => e.summary.includes(name))
+      if (!matches.length) return c
+      const latest = matches.reduce((a, b) => a.date > b.date ? a : b)
+      if (!latest.date) return c
+      const days = Math.round((Date.now() - new Date(latest.date).getTime()) / 86400000)
+      const lastContact = days === 0 ? "Møte i dag" : days === 1 ? "Møte i går" : `${days} dager siden`
+      return { ...c, lastContact }
+    }))
+  }, [calendarEvents])
+
+  // Update tenure + lastContact from Copper CRM
+  useEffect(() => {
+    if (!copperCustomers.length) return
+    setCustomers(prev => prev.map(c => {
+      const copper = copperCustomers.find(cc => cc.name.toLowerCase() === c.name.toLowerCase())
+      if (!copper) return c
+      return {
+        ...c,
+        tenure: copper.tenure > 0 ? copper.tenure : c.tenure,
+        lastContact: copper.lastContact ?? c.lastContact,
+      }
+    }))
+  }, [copperCustomers])
+
   const update = (id: string, patch: Partial<Customer>) =>
     setCustomers((p) => p.map((c) => (c.id === id ? { ...c, ...patch } : c)))
 

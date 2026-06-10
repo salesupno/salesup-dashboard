@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import GoalRing from "@/components/ui/GoalRing"
 import { GOALS_SEED, REVENUE, FUNNEL, PIPELINE, MEETINGS } from "@/lib/data"
-import type { GoalItem } from "@/lib/types"
+import type { GoalItem, MeetingMonth } from "@/lib/types"
 
 const GOALS_KEY = "su_goals_v5"
 const oFmt = (n: number) => {
@@ -151,10 +151,10 @@ function SalesFunnel() {
 const MW_MEET_C = "#6BA84F"
 const MW_WIN_C  = "#1B1C16"
 
-function TwoLineChart() {
-  const months = MEETINGS.map((m) => m.month)
-  const meet   = MEETINGS.map((m) => m.meetings)
-  const win    = MEETINGS.map((m) => m.wins)
+function TwoLineChart({ data }: { data: MeetingMonth[] }) {
+  const months = data.map((m) => m.month)
+  const meet   = data.map((m) => m.meetings)
+  const win    = data.map((m) => m.wins)
   const W = 720, H = 268, padL = 14, padR = 14, padT = 26, padB = 34
   const n = months.length
   const maxM = Math.max(...meet) * 1.18 || 1
@@ -205,9 +205,9 @@ function TwoLineChart() {
   )
 }
 
-function MeetingsWins() {
-  const totalMeet = MEETINGS.reduce((s, m) => s + m.meetings, 0)
-  const totalWin  = MEETINGS.reduce((s, m) => s + m.wins, 0)
+function MeetingsWins({ data }: { data: MeetingMonth[] }) {
+  const totalMeet = data.reduce((s, m) => s + m.meetings, 0)
+  const totalWin  = data.reduce((s, m) => s + m.wins, 0)
   const rate = totalMeet ? Math.round((totalWin / totalMeet) * 100) : 0
 
   const Tile = ({ label, value, sub, dot }: { label: string; value: number; sub: string; dot: string }) => (
@@ -236,17 +236,36 @@ function MeetingsWins() {
           <Tile label="Møter" value={totalMeet} sub="avholdt i perioden" dot={MW_MEET_C} />
           <Tile label="Wins"  value={totalWin}  sub={rate + " % av møtene"} dot={MW_WIN_C} />
         </div>
-        <TwoLineChart />
+        <TwoLineChart data={data} />
       </div>
     </div>
   )
 }
 
 export default function TabOversikt() {
-  const omsMnd    = REVENUE.omsMnd
-  const omsMal    = REVENUE.omsMndTarget
-  const mrr       = REVENUE.mrr
-  const mrrMal    = REVENUE.mrrTarget
+  const [liveRevenue, setLiveRevenue] = useState({ ...REVENUE })
+  const [liveMeetings, setLiveMeetings] = useState<MeetingMonth[]>(MEETINGS)
+  const [livePipeline, setLivePipeline] = useState({ ...PIPELINE })
+
+  useEffect(() => {
+    fetch("/api/tripletex/revenue")
+      .then(r => r.json())
+      .then(d => { if (d.omsMnd) setLiveRevenue({ omsMnd: d.omsMnd, omsMndTarget: d.omsMndTarget, mrr: d.mrr, mrrTarget: d.mrrTarget }) })
+      .catch(() => {})
+    fetch("/api/calendar/meetings")
+      .then(r => r.json())
+      .then(d => { if (d.monthly?.length) setLiveMeetings(d.monthly) })
+      .catch(() => {})
+    fetch("/api/copper/pipeline")
+      .then(r => r.json())
+      .then(d => { if (d.pipeline) setLivePipeline(d.pipeline) })
+      .catch(() => {})
+  }, [])
+
+  const omsMnd = liveRevenue.omsMnd
+  const omsMal = liveRevenue.omsMndTarget
+  const mrr    = liveRevenue.mrr
+  const mrrMal = liveRevenue.mrrTarget
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -309,7 +328,7 @@ export default function TabOversikt() {
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                   <span className="num" style={{ fontSize: 42, fontWeight: 800, letterSpacing: "-.04em", lineHeight: .82 }}>
-                    {String(PIPELINE.valueMill).replace(".", ",")}
+                    {String(livePipeline.valueMill).replace(".", ",")}
                   </span>
                   <span style={{ fontSize: 18, color: "rgba(255,255,255,.65)", fontWeight: 700 }}>mill</span>
                 </div>
@@ -320,7 +339,7 @@ export default function TabOversikt() {
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
                   <span className="num" style={{ fontSize: 42, fontWeight: 800, letterSpacing: "-.04em", lineHeight: .82 }}>
-                    {PIPELINE.winRatePct}
+                    {livePipeline.winRatePct}
                   </span>
                   <span style={{ fontSize: 20, color: "rgba(255,255,255,.72)", fontWeight: 700 }}>%</span>
                 </div>
@@ -329,7 +348,7 @@ export default function TabOversikt() {
           </div>
         </div>
 
-        <MeetingsWins />
+        <MeetingsWins data={liveMeetings} />
       </div>
     </div>
   )
