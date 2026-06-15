@@ -13,13 +13,17 @@ export interface Customer {
   owner: string
   tenure: number     // months
   lastContact: string // "X dager siden" — from Google Calendar
-  score: number      // 0-100, draggable in UI
+  score: number      // 0-100, draggable — only relevant for SEO/Ads retainers
+  pstatus?: number   // 0-3 PROJECT_STATUS index — for Hosting/Utvikling/Annet
   commercial: CommercialLevel
   goal: string
   retainer: boolean  // true = recurring retainer, false = project
   nextStep?: string  // for project customers: what's next
   fase?: ProjectFase // for project customers: current phase
   band?: HealthBand
+  // Field names the user has edited manually. Locked fields are NOT overwritten
+  // by automatic feeds (Tripletex/Copper/Calendar), preserving manual corrections.
+  locked?: string[]
 }
 
 export interface GoalItem {

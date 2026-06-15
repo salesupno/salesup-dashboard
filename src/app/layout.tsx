@@ -21,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="no" className={schibsted.variable}>
-      <body>
+      <body suppressHydrationWarning>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

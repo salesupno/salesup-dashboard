@@ -11,7 +11,7 @@ import { META } from "@/lib/data"
 
 const TABS = [
   { id: "oversikt",  label: "Oversikt",  title: "Det viktigste i dag",                sub: "" },
-  { id: "kunder",    label: "Kunder",    title: "Customer Success",                   sub: "Hvem trives, hvem er i faresonen, hvor kan vi vokse" },
+  { id: "kunder",    label: "Kunder",    title: "Customer Success",                   sub: "Oversikt over alle kunder — og hvem som trenger ekstra oppfølging" },
   { id: "kapasitet", label: "Kapasitet", title: "Kapasitet",                          sub: "Hvor fort kan vi vokse før noe sprekker?" },
 ]
 

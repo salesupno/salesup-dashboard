@@ -409,3 +409,272 @@ html, body {
   box-shadow: 0 0 0 3px var(--green-bg);
 }
 
+/* ============================================================
+   Customer Success — segment tabs, table, score chip
+   ============================================================ */
+
+/* ---- Segment tabs ---- */
+.seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1.5px solid var(--hairline);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 9px 16px;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all .14s ease;
+  white-space: nowrap;
+}
+.seg:hover { background: var(--hairline-2); }
+.seg.active {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.seg .seg-count {
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--hairline-2);
+  color: var(--ink-3);
+  border-radius: 999px;
+  padding: 1px 9px;
+  line-height: 1.5;
+}
+.seg.active .seg-count { background: rgba(255,255,255,.2); color: #fff; }
+
+/* ---- Sort dropdown (white pill) ---- */
+.cs-sortselect {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  border: 1.5px solid var(--hairline);
+  border-radius: 999px;
+  padding: 10px 38px 10px 16px;
+  outline: none;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%231B1C16' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 15px center;
+  transition: border-color .14s ease, box-shadow .14s ease;
+}
+.cs-sortselect:focus { box-shadow: 0 0 0 3px var(--green-bg); }
+
+/* ---- Attention pill ---- */
+.attn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 8px 15px;
+  font-size: 13.5px;
+  font-weight: 700;
+  background: var(--red-soft);
+  color: var(--red);
+  white-space: nowrap;
+}
+
+/* ---- Table ---- */
+.ctable-wrap {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.ctable-scroll { overflow-x: auto; }
+.ctable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+.ctable thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--hairline-2);
+  white-space: nowrap;
+}
+.ctable thead th.num-col { text-align: right; }
+.ctable tbody td {
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: middle;
+}
+.ctable tbody tr:last-child td { border-bottom: none; }
+.ctable tbody tr:hover { background: var(--hairline-2); }
+.ctable tbody td.cust { border-left: 3px solid transparent; }
+.ctable tbody td.num-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ---- Customer avatar ---- */
+.cav {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 800;
+  flex: none;
+}
+
+/* ---- Score chip (scrubber) ---- */
+.score-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 54px;
+  height: 40px;
+  border-radius: 11px;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  font-weight: 800;
+  border: 1.5px solid;
+  user-select: none;
+  box-sizing: border-box;
+}
+.score-chip.scrub { cursor: ns-resize; touch-action: none; }
+input.score-chip {
+  text-align: center;
+  outline: none;
+  padding: 0;
+  background: var(--surface);
+}
+
+/* ---- Inline mail + goal editors ---- */
+.mail-edit, .goal-edit {
+  font-family: var(--font);
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 7px;
+  padding: 3px 7px;
+  outline: none;
+  transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.mail-edit {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  width: 170px;
+}
+.mail-at {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-3);
+  flex-shrink: 0;
+  user-select: none;
+}
+.goal-edit {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  width: 100%;
+  min-width: 180px;
+}
+.mail-edit:hover, .goal-edit:hover { background: var(--hairline-2); }
+.mail-edit:focus, .goal-edit:focus {
+  background: var(--surface);
+  border-color: var(--hairline);
+  box-shadow: 0 0 0 2px var(--green-bg);
+}
+.mail-edit::placeholder, .goal-edit::placeholder { color: var(--ink-3); font-weight: 500; }
+
+/* Skann siste møte */
+.scan-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.scan-btn:hover:not(:disabled) {
+  background: var(--green-soft);
+  border-color: var(--green-dot);
+  color: var(--green);
+}
+.scan-btn:disabled { cursor: default; opacity: .7; }
+@keyframes su-spin { to { transform: rotate(360deg); } }
+.su-spin { animation: su-spin .8s linear infinite; }
+
+/* Slett — bekreftelsestrinn */
+.cs-del.confirm {
+  color: var(--red);
+  background: var(--red-soft);
+  border-color: var(--red-dot);
+}
+.cs-del.confirm:hover { color: #fff; background: var(--red); border-color: var(--red); }
+
+/* Verdi — redigerbar med auto/manuell-balanse */
+.rev-val {
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 3px 7px;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+.rev-val:hover { background: var(--hairline-2); border-color: var(--hairline); }
+.rev-val.manual { box-shadow: inset 0 0 0 1px var(--green-dot); }
+.rev-edit {
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--ink);
+  text-align: right;
+  width: 84px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--green-bg);
+}
+.rev-reset {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: all .12s ease;
+}
+.rev-reset:hover { color: var(--green); border-color: var(--green-dot); background: var(--green-soft); }
+
+/* Lagre-knapp m/ bekreftelse */
+.save-btn { transition: color .15s ease, border-color .15s ease, background .15s ease; }
+.save-btn.saved {
+  color: var(--green);
+  border-color: var(--green-dot);
+  background: var(--green-soft);
+}
+
+

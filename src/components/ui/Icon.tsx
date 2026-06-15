@@ -41,6 +41,7 @@ export default function Icon({ name, size = 16, style }: IconProps) {
     case "invoice":     return <svg {...p}><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>
     case "pipeline":    return <svg {...p}><path d="M3 6h18l-7 8v6l-4-2v-4Z"/></svg>
     case "send":        return <svg {...p}><path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z"/></svg>
+    case "mail":        return <svg {...p}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
     case "trend-down":  return <svg {...p}><path d="M3 7l6 6 4-4 8 8M21 17h-5m5 0v-5"/></svg>
     default:            return null
   }
