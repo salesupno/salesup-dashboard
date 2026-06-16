@@ -277,7 +277,7 @@ function ScoreScrubber({ value, onChange }: { value: number; onChange: (v: numbe
 // ── Siste møte (med skann-knapp) ─────────────────────────────────────────────
 function SisteMote({ c, onScan }: {
   c: EnrichedCustomer
-  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | "no_token" | "forbidden" | "error">
+  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | { kind: "no_token" | "forbidden" | "error"; detail?: string }>
 }) {
   const [scanning, setScanning] = useState(false)
   const [notFound, setNotFound] = useState(false)
@@ -295,16 +295,16 @@ function SisteMote({ c, onScan }: {
     setStatusMsg(null)
     const res = await onScan(c)
     setScanning(false)
-    if (res === "no_token") {
-      setStatusMsg("Logg inn med Google på nytt")
-      return
-    }
-    if (res === "forbidden") {
-      setStatusMsg("Mangler Calendar-tilgang")
-      return
-    }
-    if (res === "error") {
-      setStatusMsg("Kalenderfeil")
+    if (typeof res === "object") {
+      if (res.kind === "no_token") {
+        setStatusMsg(res.detail ? `Google-innlogging mangler (${res.detail})` : "Logg inn med Google på nytt")
+        return
+      }
+      if (res.kind === "forbidden") {
+        setStatusMsg(res.detail ? `Mangler Calendar-tilgang (${res.detail})` : "Mangler Calendar-tilgang")
+        return
+      }
+      setStatusMsg(res.detail ? `Kalenderfeil (${res.detail})` : "Kalenderfeil")
       return
     }
     if (res === "none") {
@@ -422,7 +422,7 @@ function Row({ c, onUpdate, onDelete, onScan, onReset }: {
   c: EnrichedCustomer
   onUpdate: (id: string, patch: Partial<Customer>) => void
   onDelete: (id: string) => void
-  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | "no_token" | "forbidden" | "error">
+  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | { kind: "no_token" | "forbidden" | "error"; detail?: string }>
   onReset: (id: string, field: string) => void
 }) {
   const tone = TYPE_TONE[c.type]
@@ -745,20 +745,22 @@ export default function TabKunder() {
 
   // Scan Google Calendar (fresh) for one customer and update "Siste møte".
   // This is an explicit auto-refresh, so it keeps the field unlocked.
-  const scanMeeting = async (c: EnrichedCustomer): Promise<"updated" | "none" | "no_token" | "forbidden" | "error"> => {
+  const scanMeeting = async (c: EnrichedCustomer): Promise<"updated" | "none" | { kind: "no_token" | "forbidden" | "error"; detail?: string }> => {
     let events = calendarEvents
     try {
       const d = await fetch("/api/calendar/meetings").then((r) => r.json())
       if (d?.source !== "google_calendar") {
         const reason = String(d?.reason ?? "")
-        if (reason.toLowerCase().includes("no access token") || reason.toLowerCase().includes("refreshaccesstokenerror") || reason.toLowerCase().includes("session error")) return "no_token"
-        if (reason.includes("401") || reason.includes("403")) return "forbidden"
-        return "error"
+        const stage = String(d?.stage ?? "")
+        const detail = [stage ? `stage=${stage}` : "", reason ? `reason=${reason}` : ""].filter(Boolean).join("; ")
+        if (reason.toLowerCase().includes("no access token") || reason.toLowerCase().includes("refreshaccesstokenerror") || reason.toLowerCase().includes("session error")) return { kind: "no_token", detail }
+        if (reason.includes("401") || reason.includes("403")) return { kind: "forbidden", detail }
+        return { kind: "error", detail }
       }
       events = Array.isArray(d.allEvents) ? d.allEvents : []
       setCalendarEvents(events)
     } catch {
-      return "error"
+      return { kind: "error", detail: "fetch failed" }
     }
     const lastContact = scanLastMeeting(c, events)
     if (!lastContact) return "none"

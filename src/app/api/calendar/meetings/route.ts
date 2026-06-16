@@ -123,6 +123,13 @@ export async function GET(request: Request) {
       allEvents,
       source: "google_calendar",
       warnings: failedCalendars.map((r) => ({ id: r.id, status: r.status, body: r.body.slice(0, 200) })),
+      debug: {
+        stage,
+        hasSession: !!session,
+        hasUser: !!session?.user,
+        hasAccessToken: !!session?.accessToken,
+        hasError: !!session?.error,
+      },
     })
   } catch (err) {
     const reason = err instanceof Error ? err.message : "Unknown calendar error"
@@ -140,6 +147,10 @@ export async function GET(request: Request) {
       source: "mock",
       reason,
       stage,
+      debug: {
+        stage,
+        hasSession: !!(await auth().catch(() => null)),
+      },
     })
   }
 }
