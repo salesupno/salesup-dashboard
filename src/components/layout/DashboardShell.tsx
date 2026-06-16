@@ -123,9 +123,24 @@ export default function DashboardShell() {
         color: "var(--ink-3)",
       }}>
         <span>{META.company} · CEO Dashboard · data per {META.asOf}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-          <span className="dot green" />
-          Live · Tripletex + Google Calendar + Copper CRM
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+            <span className="dot green" />
+            Live · Tripletex + Google Calendar
+          </span>
+          <a
+            href="/dashboard/admin/meetings"
+            style={{
+              fontSize: 11,
+              color: "var(--ink-3)",
+              opacity: 0.45,
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+            title="Admin"
+          >
+            admin
+          </a>
         </span>
       </footer>
     </div>

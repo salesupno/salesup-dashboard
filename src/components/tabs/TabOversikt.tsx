@@ -2,10 +2,81 @@
 
 import { useState, useEffect } from "react"
 import GoalRing from "@/components/ui/GoalRing"
-import { GOALS_SEED, REVENUE, FUNNEL, PIPELINE, MEETINGS } from "@/lib/data"
+import { GOALS_SEED, REVENUE, MEETINGS } from "@/lib/data"
 import type { GoalItem, MeetingMonth } from "@/lib/types"
 
 const GOALS_KEY = "su_goals_v5"
+const MEETING_EXCL_KEY = "su_meeting_exclusions_v1"
+const MONTHS_NO = ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Des"]
+
+type CalendarEvent = {
+  id: string
+  summary: string
+  date: string
+  attendeeEmails: string[]
+}
+
+type MonthlyWins = {
+  key: string
+  month: string
+  wins: number
+}
+
+const canon = (s: string) =>
+  s.toLowerCase()
+    .replace(/æ/g, "ae").replace(/ø/g, "o").replace(/å/g, "aa")
+    .replace(/[^a-z0-9]/g, "")
+    .replace(/(.)\1+/g, "$1")
+
+const monthKeyFromDate = (isoDate: string) => {
+  const d = new Date(isoDate)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+}
+
+const monthLabelFromKey = (key: string) => {
+  const [y, m] = key.split("-")
+  const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1)
+  return MONTHS_NO[d.getMonth()]
+}
+
+const monthKeysBack = (n: number) => {
+  const now = new Date()
+  const keys: string[] = []
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`)
+  }
+  return keys
+}
+
+const isInternalEmail = (email: string) => email.endsWith("@salesup.no") || email.endsWith("@resource.calendar.google.com")
+
+const eventCustomerKey = (evt: CalendarEvent) => {
+  const external = evt.attendeeEmails
+    .map((e) => e.toLowerCase().trim())
+    .filter((e) => e && !isInternalEmail(e))
+
+  if (external.length) {
+    // Use domain as customer key to avoid counting 3 meetings with same customer as 3 wins.
+    const domain = external[0].split("@").pop() ?? external[0]
+    return `d:${domain}`
+  }
+
+  // Fallback: title-based key for meetings without external attendees.
+  return `t:${canon(evt.summary).slice(0, 42)}`
+}
+
+const loadExcludedMeetings = () => {
+  try {
+    const raw = localStorage.getItem(MEETING_EXCL_KEY)
+    if (!raw) return new Set<string>()
+    const arr = JSON.parse(raw) as string[]
+    return new Set(arr)
+  } catch {
+    return new Set<string>()
+  }
+}
+
 const oFmt = (n: number) => {
   const a = Math.abs(n)
   return a >= 1e6
@@ -119,20 +190,27 @@ function GoalBoard() {
 }
 
 // ---- Sales funnel ----
-function SalesFunnel() {
-  const W = 260, sh = 54, gap = 6, maxW = 244
-  const max = FUNNEL[0].value
-  const wAt = (v: number) => Math.max(78, (v / max) * maxW)
-  const bottoms = [wAt(FUNNEL[1].value), wAt(FUNNEL[2].value), wAt(FUNNEL[2].value) * 0.62]
-  const H = FUNNEL.length * sh + (FUNNEL.length - 1) * gap
+function SalesFunnel({ meetings, closed }: { meetings: number; closed: number }) {
+  const top = Math.max(0, meetings)
+  const bot = Math.max(0, Math.min(closed, top))
+
+  const W = 260, sh = 72, gap = 8, maxW = 244
+  const max = Math.max(1, top)
+  const wAt = (v: number) => Math.max(90, (v / max) * maxW)
+  const stages = [
+    { label: "Møter", value: top, color: "#6BA84F", topW: wAt(top), botW: wAt(bot) },
+    { label: "Closed", value: bot, color: "#2E5E22", topW: wAt(bot), botW: wAt(bot) * 0.7 },
+  ]
+  const H = stages.length * sh + (stages.length - 1) * gap
   const cx = W / 2
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
-      {FUNNEL.map((s, i) => {
+      {stages.map((s, i) => {
         const y0 = i * (sh + gap)
         const y1 = y0 + sh
-        const topW = wAt(s.value)
-        const botW = bottoms[i]
+        const topW = s.topW
+        const botW = s.botW
         const pts = `${cx - topW / 2},${y0} ${cx + topW / 2},${y0} ${cx + botW / 2},${y1} ${cx - botW / 2},${y1}`
         return (
           <g key={i}>
@@ -245,21 +323,66 @@ function MeetingsWins({ data }: { data: MeetingMonth[] }) {
 export default function TabOversikt({ period = 3 }: { period?: number }) {
   const [liveRevenue, setLiveRevenue] = useState({ ...REVENUE })
   const [liveMeetings, setLiveMeetings] = useState<MeetingMonth[]>(MEETINGS)
-  const [livePipeline, setLivePipeline] = useState({ ...PIPELINE })
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
+  const [winsByMonth, setWinsByMonth] = useState<MonthlyWins[]>([])
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    setExcludedIds(loadExcludedMeetings())
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key === MEETING_EXCL_KEY) setExcludedIds(loadExcludedMeetings())
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [])
 
   useEffect(() => {
     fetch(`/api/tripletex/revenue?months=${period}`)
       .then(r => r.json())
       .then(d => { if (d.omsMnd) setLiveRevenue({ omsMnd: d.omsMnd, omsMndTarget: d.omsMndTarget, mrr: d.mrr, mrrTarget: d.mrrTarget }) })
       .catch(() => {})
-    fetch(`/api/calendar/meetings?months=${period}`)
+    fetch("/api/calendar/meetings?months=6")
       .then(r => r.json())
-      .then(d => { if (d.monthly?.length) setLiveMeetings(d.monthly) })
+      .then(d => { if (Array.isArray(d.allEvents)) setCalendarEvents(d.allEvents) })
       .catch(() => {})
-    fetch("/api/copper/pipeline")
+    fetch("/api/tripletex/wins?months=6")
       .then(r => r.json())
-      .then(d => { if (d.pipeline) setLivePipeline(d.pipeline) })
+      .then(d => { if (Array.isArray(d.monthly)) setWinsByMonth(d.monthly) })
+      .catch(() => {})
   }, [period])
+
+  useEffect(() => {
+    const keys = monthKeysBack(6)
+    const allowed = new Set(keys)
+    const monthlyKeySets = new Map<string, Set<string>>()
+    for (const k of keys) monthlyKeySets.set(k, new Set())
+
+    for (const evt of calendarEvents) {
+      if (!evt.id || excludedIds.has(evt.id)) continue
+      const k = monthKeyFromDate(evt.date)
+      if (!allowed.has(k)) continue
+      monthlyKeySets.get(k)?.add(eventCustomerKey(evt))
+    }
+
+    const winMap = new Map((winsByMonth ?? []).map((m) => [m.key, m.wins]))
+    const monthly: MeetingMonth[] = keys.map((k) => ({
+      month: monthLabelFromKey(k),
+      meetings: monthlyKeySets.get(k)?.size ?? 0,
+      wins: winMap.get(k) ?? 0,
+    }))
+
+    setLiveMeetings(monthly)
+  }, [calendarEvents, winsByMonth, excludedIds])
+
+  const periodKeys = monthKeysBack(period)
+  const periodLabelSet = new Set(periodKeys.map(monthLabelFromKey))
+  const periodMeetings = liveMeetings
+    .filter((m) => periodLabelSet.has(m.month))
+    .reduce((s, m) => s + m.meetings, 0)
+  const periodClosed = liveMeetings
+    .filter((m) => periodLabelSet.has(m.month))
+    .reduce((s, m) => s + m.wins, 0)
+  const closeRate = periodMeetings ? Math.round((periodClosed / periodMeetings) * 100) : 0
 
   const omsMnd = liveRevenue.omsMnd
   const omsMal = liveRevenue.omsMndTarget
@@ -307,38 +430,40 @@ export default function TabOversikt({ period = 3 }: { period?: number }) {
             {/* Funnel */}
             <div>
               <div style={{ fontSize: 13.5, color: "var(--ink-3)", fontWeight: 600, marginBottom: 10 }}>
-                Salgstrakt · siste 3 måneder
+                Salgstrakt · siste {period} måneder
               </div>
-              <SalesFunnel />
+              <SalesFunnel meetings={periodMeetings} closed={periodClosed} />
               <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-                {FUNNEL.map((s, i) => (
-                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 700, color: "var(--ink-2)" }}>
-                    <span style={{ width: 11, height: 11, borderRadius: 4, background: s.color }} />
-                    {s.label}
-                  </span>
-                ))}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 700, color: "var(--ink-2)" }}>
+                  <span style={{ width: 11, height: 11, borderRadius: 4, background: "#6BA84F" }} />
+                  Møter
+                </span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 700, color: "var(--ink-2)" }}>
+                  <span style={{ width: 11, height: 11, borderRadius: 4, background: "#2E5E22" }} />
+                  Closed (faktura sendt)
+                </span>
               </div>
             </div>
             {/* Stats */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ background: "var(--ink)", color: "#fff", borderRadius: 18, padding: "16px 20px" }}>
                 <div style={{ fontSize: 13, color: "rgba(255,255,255,.6)", fontWeight: 700, letterSpacing: ".03em", textTransform: "uppercase", marginBottom: 7 }}>
-                  Pipeline
+                  Closed
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                   <span className="num" style={{ fontSize: 42, fontWeight: 800, letterSpacing: "-.04em", lineHeight: .82 }}>
-                    {String(livePipeline.valueMill).replace(".", ",")}
+                    {periodClosed}
                   </span>
-                  <span style={{ fontSize: 18, color: "rgba(255,255,255,.65)", fontWeight: 700 }}>mill</span>
+                  <span style={{ fontSize: 18, color: "rgba(255,255,255,.65)", fontWeight: 700 }}>fakturaer</span>
                 </div>
               </div>
               <div style={{ background: "#4E8A39", color: "#fff", borderRadius: 18, padding: "16px 20px" }}>
                 <div style={{ fontSize: 13, color: "rgba(255,255,255,.72)", fontWeight: 700, letterSpacing: ".03em", textTransform: "uppercase", marginBottom: 7 }}>
-                  Win rate
+                  Close rate
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
                   <span className="num" style={{ fontSize: 42, fontWeight: 800, letterSpacing: "-.04em", lineHeight: .82 }}>
-                    {livePipeline.winRatePct}
+                    {closeRate}
                   </span>
                   <span style={{ fontSize: 20, color: "rgba(255,255,255,.72)", fontWeight: 700 }}>%</span>
                 </div>

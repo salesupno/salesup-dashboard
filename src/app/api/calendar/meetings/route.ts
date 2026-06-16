@@ -97,14 +97,15 @@ export async function GET(request: Request) {
       monthMap.set(MONTHS_NO[d.getMonth()], 0)
     }
 
-    const allEvents: Array<{ summary: string; date: string; attendeeEmails: string[] }> = []
+    const allEvents: Array<{ id: string; summary: string; date: string; attendeeEmails: string[] }> = []
     for (const evt of events) {
       const start = evt.start?.dateTime ?? evt.start?.date
       if (!start) continue
+      const id = evt.id ?? evt.iCalUID ?? `${evt.summary ?? ""}-${start}`
       const attendeeEmails: string[] = (evt.attendees ?? [])
         .map((a: any) => (a.email ?? "").toLowerCase())
         .filter((e: string) => e && !e.endsWith("@resource.calendar.google.com"))
-      allEvents.push({ summary: (evt.summary ?? "").toLowerCase(), date: start, attendeeEmails })
+      allEvents.push({ id, summary: (evt.summary ?? "").toLowerCase(), date: start, attendeeEmails })
       const key = MONTHS_NO[new Date(start).getMonth()]
       if (!monthMap.has(key)) continue
       const isCustomerMeeting =
