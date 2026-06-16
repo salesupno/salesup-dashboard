@@ -111,16 +111,23 @@ function NumEdit({
   value,
   onCommit,
   size = 24,
-
-const loadMeetingTags = () => {
-  try {
-    const raw = localStorage.getItem(MEETING_TAG_KEY)
-    if (!raw) return {} as Record<string, MeetingCategory>
-    return JSON.parse(raw) as Record<string, MeetingCategory>
-  } catch {
-    return {} as Record<string, MeetingCategory>
+  color,
+}: {
+  value: number
+  onCommit: (v: number) => void
+  size?: number
+  color?: string
+}) {
+  const [t, setT] = useState(String(value))
+  useEffect(() => setT(String(value)), [value])
+  const parse = (s: string) => {
+    const n = parseFloat(s.replace(",", "."))
+    return isNaN(n) ? 0 : n
   }
-}
+  return (
+    <input
+      className="edit-num num"
+      value={t}
       onChange={(e) => setT(e.target.value.replace(/[^0-9]/g, ""))}
       onFocus={(e) => e.target.select()}
       onBlur={() => onCommit(Math.max(0, parse(t)))}
@@ -134,6 +141,16 @@ const loadMeetingTags = () => {
       }}
     />
   )
+}
+
+const loadMeetingTags = () => {
+  try {
+    const raw = localStorage.getItem(MEETING_TAG_KEY)
+    if (!raw) return {} as Record<string, MeetingCategory>
+    return JSON.parse(raw) as Record<string, MeetingCategory>
+  } catch {
+    return {} as Record<string, MeetingCategory>
+  }
 }
 
 // ---- 2026 Goals board ----
