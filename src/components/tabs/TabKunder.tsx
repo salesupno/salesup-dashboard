@@ -277,7 +277,7 @@ function ScoreScrubber({ value, onChange }: { value: number; onChange: (v: numbe
 // ── Siste møte (med skann-knapp) ─────────────────────────────────────────────
 function SisteMote({ c, onScan }: {
   c: EnrichedCustomer
-  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | { kind: "no_token" | "forbidden" | "error"; detail?: string }>
+  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | { kind: "no_token" | "scope" | "forbidden" | "error"; detail?: string }>
 }) {
   const [scanning, setScanning] = useState(false)
   const [notFound, setNotFound] = useState(false)
@@ -298,6 +298,10 @@ function SisteMote({ c, onScan }: {
     if (typeof res === "object") {
       if (res.kind === "no_token") {
         setStatusMsg(res.detail ? `Google-innlogging mangler (${res.detail})` : "Logg inn med Google på nytt")
+        return
+      }
+      if (res.kind === "scope") {
+        setStatusMsg(res.detail ? `Google Calendar-tillatelse mangler (${res.detail})` : "Logg ut og inn på nytt med Google")
         return
       }
       if (res.kind === "forbidden") {
@@ -422,7 +426,7 @@ function Row({ c, onUpdate, onDelete, onScan, onReset }: {
   c: EnrichedCustomer
   onUpdate: (id: string, patch: Partial<Customer>) => void
   onDelete: (id: string) => void
-  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | { kind: "no_token" | "forbidden" | "error"; detail?: string }>
+  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | { kind: "no_token" | "scope" | "forbidden" | "error"; detail?: string }>
   onReset: (id: string, field: string) => void
 }) {
   const tone = TYPE_TONE[c.type]
@@ -745,7 +749,7 @@ export default function TabKunder() {
 
   // Scan Google Calendar (fresh) for one customer and update "Siste møte".
   // This is an explicit auto-refresh, so it keeps the field unlocked.
-  const scanMeeting = async (c: EnrichedCustomer): Promise<"updated" | "none" | { kind: "no_token" | "forbidden" | "error"; detail?: string }> => {
+  const scanMeeting = async (c: EnrichedCustomer): Promise<"updated" | "none" | { kind: "no_token" | "scope" | "forbidden" | "error"; detail?: string }> => {
     let events = calendarEvents
     try {
       const d = await fetch("/api/calendar/meetings").then((r) => r.json())
@@ -754,6 +758,7 @@ export default function TabKunder() {
         const stage = String(d?.stage ?? "")
         const detail = [stage ? `stage=${stage}` : "", reason ? `reason=${reason}` : ""].filter(Boolean).join("; ")
         if (reason.toLowerCase().includes("no access token") || reason.toLowerCase().includes("refreshaccesstokenerror") || reason.toLowerCase().includes("session error")) return { kind: "no_token", detail }
+        if (reason.toLowerCase().includes("insufficient authentication scopes") || reason.toLowerCase().includes("scope")) return { kind: "scope", detail }
         if (reason.includes("401") || reason.includes("403")) return { kind: "forbidden", detail }
         return { kind: "error", detail }
       }

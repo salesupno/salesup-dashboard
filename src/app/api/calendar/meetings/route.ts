@@ -36,7 +36,8 @@ export async function GET(request: Request) {
       { headers: { Authorization: `Bearer ${accessToken}` } }
     )
     if (!calListRes.ok) {
-      throw new Error(`Google Calendar list failed: ${calListRes.status}`)
+      const body = await calListRes.text().catch(() => "")
+      throw new Error(`Google Calendar list failed: ${calListRes.status} ${body.slice(0, 240)}`)
     }
     const calList = calListRes.ok ? await calListRes.json() : { items: [] }
     const allCals: any[] = calList.items ?? []
