@@ -20,21 +20,20 @@ const INTERNAL_TITLE_WORDS = [
   "standup",
   "intern",
   "internal",
-  "møte",
-  "meeting",
   "sync",
   "retro",
   "planlegging",
   "1:1",
   "1-1",
   "team",
-  "salesup",
 ]
 
 const ACQUISITION_TITLE_WORDS = [
   "kickoff",
   "demo",
   "intro",
+  "intromote",
+  "intromøte",
   "introduksjon",
   "first",
   "ny kunde",
@@ -43,6 +42,11 @@ const ACQUISITION_TITLE_WORDS = [
   "salg",
   "tilbud",
   "kunde",
+  "presentasjon",
+  "presentere",
+  "forslag",
+  "pitch",
+  "nettside",
 ]
 
 const PARTNER_TITLE_WORDS = [
@@ -98,6 +102,10 @@ export const suggestMeetingClassification = (
   const domains = externalDomains(evt)
   const hasKnownCustomerDomain = domains.some((d) => knownCustomerDomains.has(d))
   const hasInternalAttendees = internalOnly(evt)
+  const hasAcquisitionSignal = ACQUISITION_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))
+  const hasPartnerSignal = PARTNER_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))
+  const hasInternalTitleSignal = INTERNAL_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))
+  const hasCrossTitle = summary.includes(" x ") || summary.includes(" × ")
 
   if (IGNORE_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))) {
     return { category: "ignore", confidence: 95, reason: "tittel signaliserer at møtet ikke er salgsmøte", domains }
@@ -111,24 +119,30 @@ export const suggestMeetingClassification = (
     return { category: "existing_customer", confidence: 95, reason: "ekstern deltaker matcher kjent kunde fra Tripletex", domains }
   }
 
+  // Unknown external domain + classic pitch/intro wording should strongly count as a new customer meeting.
+  if (domains.length > 0 && hasAcquisitionSignal) {
+    return { category: "new_customer", confidence: 93, reason: "ekstern deltaker + intro/presentasjon/tilbud-signal i tittelen", domains }
+  }
+
+  // Unknown external domain + company-to-company title format is usually a live prospect/customer dialogue.
+  if (domains.length > 0 && hasCrossTitle && !hasPartnerSignal) {
+    return { category: "new_customer", confidence: 83, reason: "ekstern deltaker + møtetittel på formatet 'kunde x SalesUp'", domains }
+  }
+
   if (domains.some((d) => d.includes("gmail.com") || d.includes("outlook.com") || d.includes("hotmail.com"))) {
     return { category: "new_customer", confidence: 72, reason: "ekstern privat/ukjent deltakerdomene uten kjent kunde", domains }
   }
 
-  if (PARTNER_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))) {
+  if (hasPartnerSignal) {
     return { category: "partner", confidence: 80, reason: "tittel signaliserer partner/leverandør", domains }
   }
 
-  if (ACQUISITION_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))) {
-    return { category: "new_customer", confidence: 86, reason: "tittel signaliserer første kundedialog", domains }
-  }
-
   if (domains.length > 0) {
-    return { category: "new_customer", confidence: 61, reason: "ekstern deltaker uten kjent kunde-matching", domains }
+    return { category: "new_customer", confidence: 74, reason: "ekstern deltaker uten kjent kunde-matching", domains }
   }
 
-  if (hasInternalAttendees) {
-    return { category: "internal", confidence: 85, reason: "kun interne deltakere", domains }
+  if (hasInternalAttendees || hasInternalTitleSignal) {
+    return { category: "internal", confidence: 85, reason: "internt møte uten eksterne deltakere", domains }
   }
 
   return { category: "ignore", confidence: 55, reason: "uklar møteklasse, bør vurderes manuelt", domains }
