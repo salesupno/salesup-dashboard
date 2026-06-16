@@ -277,11 +277,11 @@ function ScoreScrubber({ value, onChange }: { value: number; onChange: (v: numbe
 // ── Siste møte (med skann-knapp) ─────────────────────────────────────────────
 function SisteMote({ c, onScan }: {
   c: EnrichedCustomer
-  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | "unavailable">
+  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | "no_token" | "forbidden" | "error">
 }) {
   const [scanning, setScanning] = useState(false)
   const [notFound, setNotFound] = useState(false)
-  const [unavailable, setUnavailable] = useState(false)
+  const [statusMsg, setStatusMsg] = useState<string | null>(null)
   const relBand = c.days > 60 ? "red" : c.days > 30 ? "yellow" : "green"
   const relTxt = c.days === 0 ? "Møte i dag" : c.days === 1 ? "Møte i går" : `${c.days} dager siden`
 
@@ -292,11 +292,19 @@ function SisteMote({ c, onScan }: {
   const scan = async () => {
     setScanning(true)
     setNotFound(false)
-    setUnavailable(false)
+    setStatusMsg(null)
     const res = await onScan(c)
     setScanning(false)
-    if (res === "unavailable") {
-      setUnavailable(true)
+    if (res === "no_token") {
+      setStatusMsg("Logg inn med Google på nytt")
+      return
+    }
+    if (res === "forbidden") {
+      setStatusMsg("Mangler Calendar-tilgang")
+      return
+    }
+    if (res === "error") {
+      setStatusMsg("Kalenderfeil")
       return
     }
     if (res === "none") {
@@ -307,8 +315,8 @@ function SisteMote({ c, onScan }: {
 
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 600, color: (notFound || unavailable) ? "var(--ink-3)" : `var(--${relBand})`, minWidth: 92 }}>
-        {scanning ? "Skanner…" : unavailable ? "Koble Google-kalender" : notFound ? "Ingen møte funnet" : (<><span className={`dot ${relBand}`} />{relTxt}</>)}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 600, color: (notFound || statusMsg) ? "var(--ink-3)" : `var(--${relBand})`, minWidth: 92 }}>
+        {scanning ? "Skanner…" : statusMsg ? statusMsg : notFound ? "Ingen møte funnet" : (<><span className={`dot ${relBand}`} />{relTxt}</>)}
       </span>
       <button
         className="scan-btn"
@@ -414,7 +422,7 @@ function Row({ c, onUpdate, onDelete, onScan, onReset }: {
   c: EnrichedCustomer
   onUpdate: (id: string, patch: Partial<Customer>) => void
   onDelete: (id: string) => void
-  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | "unavailable">
+  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | "no_token" | "forbidden" | "error">
   onReset: (id: string, field: string) => void
 }) {
   const tone = TYPE_TONE[c.type]
@@ -737,15 +745,20 @@ export default function TabKunder() {
 
   // Scan Google Calendar (fresh) for one customer and update "Siste møte".
   // This is an explicit auto-refresh, so it keeps the field unlocked.
-  const scanMeeting = async (c: EnrichedCustomer): Promise<"updated" | "none" | "unavailable"> => {
+  const scanMeeting = async (c: EnrichedCustomer): Promise<"updated" | "none" | "no_token" | "forbidden" | "error"> => {
     let events = calendarEvents
     try {
       const d = await fetch("/api/calendar/meetings").then((r) => r.json())
-      if (d?.source !== "google_calendar") return "unavailable"
+      if (d?.source !== "google_calendar") {
+        const reason = String(d?.reason ?? "")
+        if (reason.toLowerCase().includes("no access token") || reason.toLowerCase().includes("refreshaccesstokenerror") || reason.toLowerCase().includes("session error")) return "no_token"
+        if (reason.includes("401") || reason.includes("403")) return "forbidden"
+        return "error"
+      }
       events = Array.isArray(d.allEvents) ? d.allEvents : []
       setCalendarEvents(events)
     } catch {
-      return "unavailable"
+      return "error"
     }
     const lastContact = scanLastMeeting(c, events)
     if (!lastContact) return "none"

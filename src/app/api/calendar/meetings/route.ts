@@ -8,9 +8,12 @@ const MONTHS_NO = ["Jan","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const months = Math.min(12, Math.max(1, parseInt(searchParams.get("months") ?? "6", 10)))
+  let stage = "init"
 
   try {
+    stage = "auth"
     const session = await auth()
+    if (session?.error) throw new Error(`Session error: ${session.error}`)
     const accessToken = session?.accessToken
     if (!accessToken) throw new Error("No access token — re-login required for calendar access")
 
@@ -27,6 +30,7 @@ export async function GET(request: Request) {
     })
 
     // Fetch all calendars the user has access to
+    stage = "calendarList"
     const calListRes = await fetch(
       "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50",
       { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -49,6 +53,7 @@ export async function GET(request: Request) {
     })
 
     // Fetch events from all relevant calendars in parallel
+    stage = "events"
     const calEventFetches = relevantCals.map(async (cal: any) => {
       const r = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?${params}`,
@@ -108,7 +113,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ monthly, allEvents, source: "google_calendar" })
   } catch (err) {
-    console.error("Calendar error:", err)
+    const reason = err instanceof Error ? err.message : "Unknown calendar error"
+    console.error("Calendar error:", reason)
     return NextResponse.json({
       monthly: [
         { month: "Jan", meetings: 34, wins: 5 },
@@ -120,6 +126,8 @@ export async function GET(request: Request) {
       ],
       allEvents: [],
       source: "mock",
+      reason,
+      stage,
     })
   }
 }
