@@ -1,12 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import GoalRing from "@/components/ui/GoalRing"
 import { GOALS_SEED, REVENUE, MEETINGS } from "@/lib/data"
 import type { GoalItem, MeetingMonth } from "@/lib/types"
+import {
+  MeetingCategory,
+  MeetingEvent,
+  meetingCustomerKey,
+  suggestMeetingClassification,
+} from "@/lib/meetingClassification"
 
 const GOALS_KEY = "su_goals_v5"
-const MEETING_EXCL_KEY = "su_meeting_exclusions_v1"
+const MEETING_TAG_KEY = "su_meeting_tags_v1"
 const MONTHS_NO = ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Des"]
 
 type CalendarEvent = {
@@ -105,23 +111,16 @@ function NumEdit({
   value,
   onCommit,
   size = 24,
-  color,
-}: {
-  value: number
-  onCommit: (v: number) => void
-  size?: number
-  color?: string
-}) {
-  const [t, setT] = useState(String(value))
-  useEffect(() => setT(String(value)), [value])
-  const parse = (s: string) => {
-    const n = parseFloat(s.replace(",", "."))
-    return isNaN(n) ? 0 : n
+
+const loadMeetingTags = () => {
+  try {
+    const raw = localStorage.getItem(MEETING_TAG_KEY)
+    if (!raw) return {} as Record<string, MeetingCategory>
+    return JSON.parse(raw) as Record<string, MeetingCategory>
+  } catch {
+    return {} as Record<string, MeetingCategory>
   }
-  return (
-    <input
-      className="edit-num num"
-      value={t}
+}
       onChange={(e) => setT(e.target.value.replace(/[^0-9]/g, ""))}
       onFocus={(e) => e.target.select()}
       onBlur={() => onCommit(Math.max(0, parse(t)))}
@@ -323,16 +322,17 @@ function MeetingsWins({ data }: { data: MeetingMonth[] }) {
 export default function TabOversikt({ period = 3 }: { period?: number }) {
   const [liveRevenue, setLiveRevenue] = useState({ ...REVENUE })
   const [liveMeetings, setLiveMeetings] = useState<MeetingMonth[]>(MEETINGS)
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
+  const [calendarEvents, setCalendarEvents] = useState<MeetingEvent[]>([])
+  const [tripletexCustomers, setTripletexCustomers] = useState<Array<{ domain?: string }>>([])
   const [winsByMonth, setWinsByMonth] = useState<MonthlyWins[]>([])
-  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set())
+  const [meetingTags, setMeetingTags] = useState<Record<string, MeetingCategory>>({})
 
   useEffect(() => {
-    setExcludedIds(loadExcludedMeetings())
     const onStorage = (ev: StorageEvent) => {
-      if (ev.key === MEETING_EXCL_KEY) setExcludedIds(loadExcludedMeetings())
+      if (ev.key === MEETING_TAG_KEY) setMeetingTags(loadMeetingTags())
     }
     window.addEventListener("storage", onStorage)
+    setMeetingTags(loadMeetingTags())
     return () => window.removeEventListener("storage", onStorage)
   }, [])
 
@@ -349,30 +349,47 @@ export default function TabOversikt({ period = 3 }: { period?: number }) {
       .then(r => r.json())
       .then(d => { if (Array.isArray(d.monthly)) setWinsByMonth(d.monthly) })
       .catch(() => {})
+    fetch("/api/tripletex/customers")
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.customers)) setTripletexCustomers(d.customers) })
+      .catch(() => {})
   }, [period])
 
-  useEffect(() => {
+  const knownDomains = useMemo(
+    () => new Set(tripletexCustomers.map((c) => String(c.domain ?? "").toLowerCase().trim()).filter(Boolean)),
+    [tripletexCustomers]
+  )
+
+  const meetingSeries = useMemo(() => {
     const keys = monthKeysBack(6)
     const allowed = new Set(keys)
-    const monthlyKeySets = new Map<string, Set<string>>()
-    for (const k of keys) monthlyKeySets.set(k, new Set())
+    const counts = new Map(keys.map((k) => [k, 0]))
+    const seen = new Set<string>()
+    const winsMap = new Map((winsByMonth ?? []).map((m) => [m.key, m.wins]))
 
     for (const evt of calendarEvents) {
-      if (!evt.id || excludedIds.has(evt.id)) continue
-      const k = monthKeyFromDate(evt.date)
-      if (!allowed.has(k)) continue
-      monthlyKeySets.get(k)?.add(eventCustomerKey(evt))
+      const suggestion = suggestMeetingClassification(evt, knownDomains)
+      const effective = meetingTags[evt.id] ?? suggestion.category
+      if (effective !== "new_customer") continue
+      const monthKey = monthKeyFromDate(evt.date)
+      if (!allowed.has(monthKey)) continue
+      const dedupeKey = `${monthKey}:${meetingCustomerKey(evt)}`
+      if (seen.has(dedupeKey)) continue
+      seen.add(dedupeKey)
+      counts.set(monthKey, (counts.get(monthKey) ?? 0) + 1)
     }
 
-    const winMap = new Map((winsByMonth ?? []).map((m) => [m.key, m.wins]))
-    const monthly: MeetingMonth[] = keys.map((k) => ({
+    return keys.map((k) => ({
+      key: k,
       month: monthLabelFromKey(k),
-      meetings: monthlyKeySets.get(k)?.size ?? 0,
-      wins: winMap.get(k) ?? 0,
+      meetings: counts.get(k) ?? 0,
+      wins: winsMap.get(k) ?? 0,
     }))
+  }, [calendarEvents, knownDomains, meetingTags, winsByMonth])
 
-    setLiveMeetings(monthly)
-  }, [calendarEvents, winsByMonth, excludedIds])
+  useEffect(() => {
+    setLiveMeetings(meetingSeries.map(({ month, meetings, wins }) => ({ month, meetings, wins })))
+  }, [meetingSeries])
 
   const periodKeys = monthKeysBack(period)
   const periodLabelSet = new Set(periodKeys.map(monthLabelFromKey))

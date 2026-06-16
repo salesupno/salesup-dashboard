@@ -19,7 +19,7 @@ async function fetchInvoices(authHeader: string, from: string, to: string): Prom
   const pageSize = 1000
   let offset = 0
 
-  for (let page = 0; page < 20; page++) {
+  for (let page = 0; page < 100; page++) {
     const res = await fetch(
       `${BASE}/invoice?invoiceDateFrom=${from}&invoiceDateTo=${to}` +
         `&from=${offset}&count=${pageSize}&fields=invoiceDate,customer(id)`,
@@ -46,24 +46,34 @@ export async function GET(request: Request) {
     const authHeader = await createTripletexSession()
     const now = new Date()
 
+    // Pull a wide date window so we can determine each customer's first invoice.
+    const historyStart = new Date(2010, 0, 1)
+
     const keys: string[] = []
     for (let i = months - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
       keys.push(ymd(d).slice(0, 7))
     }
-    const from = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1)
-    const invoices = await fetchInvoices(authHeader, ymd(from), ymd(now))
+    const invoices = await fetchInvoices(authHeader, ymd(historyStart), ymd(now))
+
+    const firstInvoiceByCustomer = new Map<number, string>()
+    for (const inv of invoices) {
+      const cid = inv.customer?.id
+      const date = inv.invoiceDate ?? ""
+      if (typeof cid !== "number" || !date) continue
+      const current = firstInvoiceByCustomer.get(cid)
+      if (!current || date < current) firstInvoiceByCustomer.set(cid, date)
+    }
 
     const byMonth = new Map<string, { wins: number; uniqueCustomers: Set<number> }>()
     for (const key of keys) byMonth.set(key, { wins: 0, uniqueCustomers: new Set<number>() })
 
-    for (const inv of invoices) {
-      const k = monthKey(inv.invoiceDate ?? "")
+    for (const [cid, firstDate] of firstInvoiceByCustomer.entries()) {
+      const k = monthKey(firstDate)
       const bucket = byMonth.get(k)
       if (!bucket) continue
       bucket.wins += 1
-      const cid = inv.customer?.id
-      if (typeof cid === "number") bucket.uniqueCustomers.add(cid)
+      bucket.uniqueCustomers.add(cid)
     }
 
     const monthly = keys.map((k) => ({
