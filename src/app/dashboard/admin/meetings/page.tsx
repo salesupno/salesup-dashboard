@@ -17,7 +17,7 @@ type TxCustomer = {
 }
 
 const EXCL_KEY = "su_meeting_exclusions_v1"
-const TAG_KEY = "su_meeting_tags_v1"
+const TAG_KEY = "su_meeting_tags_v2"
 
 const loadTags = () => {
   try {

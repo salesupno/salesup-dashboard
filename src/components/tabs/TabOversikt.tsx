@@ -12,7 +12,7 @@ import {
 } from "@/lib/meetingClassification"
 
 const GOALS_KEY = "su_goals_v5"
-const MEETING_TAG_KEY = "su_meeting_tags_v1"
+const MEETING_TAG_KEY = "su_meeting_tags_v2"
 const MONTHS_NO = ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Des"]
 
 type CalendarEvent = {
