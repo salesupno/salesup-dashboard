@@ -52,27 +52,34 @@ export async function GET(request: Request) {
       return cal.accessRole === "owner" || cal.accessRole === "writer" || cal.accessRole === "reader"
     })
 
-    // Fetch events from all relevant calendars in parallel
+    // Fetch events from all relevant calendars in parallel.
+    // Important: one forbidden/shared calendar must not kill the whole sync,
+    // otherwise a single inaccessible calendar hides all real meetings.
     stage = "events"
     const calEventFetches = relevantCals.map(async (cal: any) => {
       const r = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?${params}`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       )
-      if (!r.ok && (r.status === 401 || r.status === 403)) {
-        throw new Error(`Google Calendar events failed: ${r.status}`)
+      if (!r.ok) {
+        const text = await r.text().catch(() => "")
+        return { ok: false as const, id: cal.id as string, status: r.status, body: text, items: [] as any[] }
       }
-      if (!r.ok) return []
       const d = await r.json()
-      return d.items ?? []
+      return { ok: true as const, id: cal.id as string, status: 200, body: "", items: d.items ?? [] }
     })
     const calResults = await Promise.all(calEventFetches)
 
     // Merge and deduplicate by event ID
     const seenIds = new Set<string>()
     const events: any[] = []
-    for (const batch of calResults) {
-      for (const evt of batch) {
+    const failedCalendars = calResults.filter((r) => !r.ok)
+    for (const result of calResults) {
+      if (!result.ok) {
+        console.warn("Google Calendar skipped calendar:", result.id, result.status, result.body.slice(0, 120))
+        continue
+      }
+      for (const evt of result.items) {
         const key = evt.id ?? evt.iCalUID ?? JSON.stringify(evt)
         if (!seenIds.has(key)) {
           seenIds.add(key)
@@ -111,7 +118,12 @@ export async function GET(request: Request) {
       wins: 0, // wins come from Copper CRM
     }))
 
-    return NextResponse.json({ monthly, allEvents, source: "google_calendar" })
+    return NextResponse.json({
+      monthly,
+      allEvents,
+      source: "google_calendar",
+      warnings: failedCalendars.map((r) => ({ id: r.id, status: r.status, body: r.body.slice(0, 200) })),
+    })
   } catch (err) {
     const reason = err instanceof Error ? err.message : "Unknown calendar error"
     console.error("Calendar error:", reason)
