@@ -5,6 +5,36 @@ export const dynamic = "force-dynamic"
 
 const MONTHS_NO = ["Jan","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Des"]
 
+async function fetchCalendarEvents(
+  calendarId: string,
+  accessToken: string,
+  baseParams: URLSearchParams
+): Promise<{ ok: true; id: string; status: 200; body: string; items: any[] } | { ok: false; id: string; status: number; body: string; items: any[] }> {
+  const items: any[] = []
+  let pageToken = ""
+
+  for (let page = 0; page < 20; page++) {
+    const params = new URLSearchParams(baseParams)
+    if (pageToken) params.set("pageToken", pageToken)
+
+    const r = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!r.ok) {
+      const text = await r.text().catch(() => "")
+      return { ok: false, id: calendarId, status: r.status, body: text, items: [] }
+    }
+
+    const d = await r.json()
+    items.push(...(d.items ?? []))
+    pageToken = d.nextPageToken ?? ""
+    if (!pageToken) break
+  }
+
+  return { ok: true, id: calendarId, status: 200, body: "", items }
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const months = Math.min(12, Math.max(1, parseInt(searchParams.get("months") ?? "6", 10)))
@@ -57,18 +87,9 @@ export async function GET(request: Request) {
     // Important: one forbidden/shared calendar must not kill the whole sync,
     // otherwise a single inaccessible calendar hides all real meetings.
     stage = "events"
-    const calEventFetches = relevantCals.map(async (cal: any) => {
-      const r = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?${params}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      )
-      if (!r.ok) {
-        const text = await r.text().catch(() => "")
-        return { ok: false as const, id: cal.id as string, status: r.status, body: text, items: [] as any[] }
-      }
-      const d = await r.json()
-      return { ok: true as const, id: cal.id as string, status: 200, body: "", items: d.items ?? [] }
-    })
+    const calEventFetches = relevantCals.map((cal: any) =>
+      fetchCalendarEvents(cal.id as string, accessToken, params)
+    )
     const calResults = await Promise.all(calEventFetches)
 
     // Merge and deduplicate by event ID
