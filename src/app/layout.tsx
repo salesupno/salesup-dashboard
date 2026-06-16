@@ -20,7 +20,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="no" className={schibsted.variable}>
+    <html lang="no" className={schibsted.variable} suppressHydrationWarning>
       <body suppressHydrationWarning>
         <AuthProvider>{children}</AuthProvider>
       </body>

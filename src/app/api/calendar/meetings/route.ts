@@ -31,6 +31,9 @@ export async function GET(request: Request) {
       "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50",
       { headers: { Authorization: `Bearer ${accessToken}` } }
     )
+    if (!calListRes.ok) {
+      throw new Error(`Google Calendar list failed: ${calListRes.status}`)
+    }
     const calList = calListRes.ok ? await calListRes.json() : { items: [] }
     const allCals: any[] = calList.items ?? []
 
@@ -46,15 +49,18 @@ export async function GET(request: Request) {
     })
 
     // Fetch events from all relevant calendars in parallel
-    const calEventFetches = relevantCals.map((cal: any) =>
-      fetch(
+    const calEventFetches = relevantCals.map(async (cal: any) => {
+      const r = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?${params}`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       )
-        .then(r => r.ok ? r.json() : { items: [] })
-        .then(d => d.items ?? [])
-        .catch(() => [])
-    )
+      if (!r.ok && (r.status === 401 || r.status === 403)) {
+        throw new Error(`Google Calendar events failed: ${r.status}`)
+      }
+      if (!r.ok) return []
+      const d = await r.json()
+      return d.items ?? []
+    })
     const calResults = await Promise.all(calEventFetches)
 
     // Merge and deduplicate by event ID

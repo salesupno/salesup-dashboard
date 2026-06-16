@@ -6,6 +6,7 @@ export interface Customer {
   id: string
   name: string
   email?: string     // customer contact email — used to match Google Calendar attendees
+  altEmail?: string  // optional secondary domain used in meeting scan (max 2 domains total)
   type: "SEO/Ads" | "Utvikling" | "Hosting" | "Annet"
   market: string
   rev: number        // kr/år in thousands

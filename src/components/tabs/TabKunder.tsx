@@ -70,18 +70,30 @@ const daysSince = (txt: string) => {
 
 type CalEvent = { summary: string; date: string; attendeeEmails: string[] }
 
+const customerDomains = (c: Customer): string[] => {
+  const primary = domainOf(typeof c.email === "string" && c.email ? c.email : emailSlug(c.name))
+  const secondary = domainOf(c.altEmail ?? "")
+  return Array.from(new Set([primary, secondary].filter(Boolean))).slice(0, 2)
+}
+
 // Match one customer against calendar events → "Møte i dag/går" / "N dager siden", or null.
 // Matches if a domain attendee is present, or the customer name / domain base word
 // appears in the event title — so it works even when the email is only in the title.
 const scanLastMeeting = (c: Customer, events: CalEvent[]): string | null => {
-  const domain = domainOf(typeof c.email === "string" && c.email ? c.email : emailSlug(c.name))
-  const domainBase = domain.split(".")[0] // "vaardal" from "vaardal.as"
-  const nameWord = c.name.toLowerCase().split(" ")[0]
+  const domains = customerDomains(c)
+  const domainBases = domains.map((d) => d.split(".")[0]).filter((d) => d.length > 2)
+  const titleNeedles = Array.from(new Set([
+    ...domainBases.map((d) => canon(d)),
+    canon(c.name),
+    canon(c.name.toLowerCase().split(" ")[0]),
+  ].filter((k) => k.length > 2)))
   const matches = events.filter((e) => {
-    const summary = e.summary.toLowerCase()
-    if (domain && (e.attendeeEmails.some((a) => a.toLowerCase().endsWith("@" + domain)) || canon(e.summary).includes(canon(domain.split(".")[0])) || canon(e.summary).includes(canon(c.name)))) return true
-    if (domainBase.length > 2 && summary.includes(domainBase)) return true
-    if (nameWord.length > 2 && summary.includes(nameWord)) return true
+    const byEmail = domains.some((d) =>
+      e.attendeeEmails.some((a) => a.toLowerCase().endsWith("@" + d))
+    )
+    if (byEmail) return true
+    const summaryCanon = canon(e.summary)
+    if (titleNeedles.some((k) => summaryCanon.includes(k))) return true
     return false
   })
   if (!matches.length) return null
@@ -104,7 +116,7 @@ const canon = (s: string) =>
 
 // Fields that are filled automatically from external feeds. Editing one of these
 // "locks" it so the automatic feed won't overwrite the manual value on reload.
-const AUTO_FIELDS = new Set(["rev", "lastContact", "tenure", "email"])
+const AUTO_FIELDS = new Set(["rev", "lastContact", "tenure", "email", "altEmail"])
 
 // ── Tripletex revenue matching (shared by auto-merge + "reset to auto") ───────
 const TX_SUFFIX = new Set(["as", "asa", "ab", "ans", "da", "sa", "oyj", "aps", "gmbh", "inc", "llc", "ltd", "nuf"])
@@ -136,19 +148,21 @@ type EnrichedCustomer = Customer & {
   retainer: boolean
   pstatus: number
   email: string
+  altEmail?: string
 }
 
 const enrich = (c: Customer): EnrichedCustomer => {
   const days = daysSince(c.lastContact)
   const score = typeof c.score === "number" ? c.score : 60
   const email = typeof c.email === "string" ? c.email : emailSlug(c.name)
+  const altEmail = typeof c.altEmail === "string" ? c.altEmail : undefined
   const retainer = isRetainer(c)
   const fromHealth = healthToIdx(c.band)
   const pstatus = c.pstatus !== undefined && c.pstatus >= 0 && c.pstatus <= 3
     ? c.pstatus
     : fromHealth >= 0 ? fromHealth : scoreToIdx(score)
   const band: HealthBand = retainer ? bandOf(score) : PROJECT_STATUS[pstatus].band
-  return { ...c, days, score, email, retainer, pstatus, band }
+  return { ...c, days, score, email, altEmail, retainer, pstatus, band }
 }
 
 const loadCustomers = (): Customer[] => {
@@ -263,22 +277,28 @@ function ScoreScrubber({ value, onChange }: { value: number; onChange: (v: numbe
 // ── Siste møte (med skann-knapp) ─────────────────────────────────────────────
 function SisteMote({ c, onScan }: {
   c: EnrichedCustomer
-  onScan: (id: string) => Promise<"updated" | "none">
+  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | "unavailable">
 }) {
   const [scanning, setScanning] = useState(false)
   const [notFound, setNotFound] = useState(false)
+  const [unavailable, setUnavailable] = useState(false)
   const relBand = c.days > 60 ? "red" : c.days > 30 ? "yellow" : "green"
   const relTxt = c.days === 0 ? "Møte i dag" : c.days === 1 ? "Møte i går" : `${c.days} dager siden`
 
-  if (!c.email) {
+  if (!c.email && !c.altEmail) {
     return <span style={{ fontSize: 13.5, color: "var(--ink-3)" }}>Koble e-post</span>
   }
 
   const scan = async () => {
     setScanning(true)
     setNotFound(false)
-    const res = await onScan(c.id)
+    setUnavailable(false)
+    const res = await onScan(c)
     setScanning(false)
+    if (res === "unavailable") {
+      setUnavailable(true)
+      return
+    }
     if (res === "none") {
       setNotFound(true)
       setTimeout(() => setNotFound(false), 2600)
@@ -287,8 +307,8 @@ function SisteMote({ c, onScan }: {
 
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 600, color: notFound ? "var(--ink-3)" : `var(--${relBand})`, minWidth: 92 }}>
-        {scanning ? "Skanner…" : notFound ? "Ingen møte funnet" : (<><span className={`dot ${relBand}`} />{relTxt}</>)}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 600, color: (notFound || unavailable) ? "var(--ink-3)" : `var(--${relBand})`, minWidth: 92 }}>
+        {scanning ? "Skanner…" : unavailable ? "Koble Google-kalender" : notFound ? "Ingen møte funnet" : (<><span className={`dot ${relBand}`} />{relTxt}</>)}
       </span>
       <button
         className="scan-btn"
@@ -394,7 +414,7 @@ function Row({ c, onUpdate, onDelete, onScan, onReset }: {
   c: EnrichedCustomer
   onUpdate: (id: string, patch: Partial<Customer>) => void
   onDelete: (id: string) => void
-  onScan: (id: string) => Promise<"updated" | "none">
+  onScan: (c: EnrichedCustomer) => Promise<"updated" | "none" | "unavailable">
   onReset: (id: string, field: string) => void
 }) {
   const tone = TYPE_TONE[c.type]
@@ -411,16 +431,61 @@ function Row({ c, onUpdate, onDelete, onScan, onReset }: {
             <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-.01em", color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {c.name}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 1 }}>
-              <Icon name="mail" size={13} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
-              <span className="mail-at">@</span>
-              <input
-                className="mail-edit"
-                value={c.email}
-                placeholder="domene.no"
-                title="Skriv kundens e-postdomene (uten @) — brukes til å finne møter i kalenderen"
-                onChange={(e) => onUpdate(c.id, { email: domainOf(e.target.value) })}
-              />
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <Icon name="mail" size={13} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
+                <span className="mail-at">@</span>
+                <input
+                  className="mail-edit"
+                  value={c.email}
+                  placeholder="domene.no"
+                  title="Primærdomene for møteskann"
+                  onChange={(e) => onUpdate(c.id, { email: domainOf(e.target.value) })}
+                />
+              </div>
+
+              {c.altEmail !== undefined ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 18 }}>
+                  <span className="mail-at">@</span>
+                  <input
+                    className="mail-edit"
+                    value={c.altEmail ?? ""}
+                    placeholder="ekstra domene"
+                    title="Ekstra domene for møteskann (maks 2 domener totalt)"
+                    onChange={(e) => onUpdate(c.id, { altEmail: domainOf(e.target.value) })}
+                  />
+                  <button
+                    type="button"
+                    className="cs-del"
+                    style={{ width: 22, height: 22, borderRadius: 7 }}
+                    title="Fjern ekstra domene"
+                    onClick={() => onUpdate(c.id, { altEmail: undefined })}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onUpdate(c.id, { altEmail: "" })}
+                  style={{
+                    alignSelf: "flex-start",
+                    marginLeft: 18,
+                    fontFamily: "var(--font)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "var(--ink-3)",
+                    background: "transparent",
+                    border: "1px dashed var(--hairline)",
+                    borderRadius: 7,
+                    padding: "2px 8px",
+                    cursor: "pointer",
+                  }}
+                  title="Legg til ekstra domene for møteskann"
+                >
+                  + Ekstra domene
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -628,10 +693,13 @@ export default function TabKunder() {
       let next = c
       // Revenue from Tripletex (unless manually overridden).
       if (!c.locked?.includes("rev") && match.rev > 0) next = { ...next, rev: match.rev }
-      // Auto-fill e-postdomene from Tripletex when the user hasn't set one.
-      const hasEmail = typeof c.email === "string" && c.email.trim().length > 0
-      if (match.domain && !c.locked?.includes("email") && !hasEmail) {
-        next = { ...next, email: match.domain }
+      // Auto-sync e-postdomene from Tripletex unless manually overridden.
+      // This keeps domains up-to-date automatically per customer.
+      if (match.domain && !c.locked?.includes("email")) {
+        const nextDomain = domainOf(match.domain)
+        if (nextDomain && nextDomain !== domainOf(c.email ?? "")) {
+          next = { ...next, email: nextDomain }
+        }
       }
       return next
     }))
@@ -669,17 +737,19 @@ export default function TabKunder() {
 
   // Scan Google Calendar (fresh) for one customer and update "Siste møte".
   // This is an explicit auto-refresh, so it keeps the field unlocked.
-  const scanMeeting = async (id: string): Promise<"updated" | "none"> => {
-    const c = list.find((x) => x.id === id)
-    if (!c) return "none"
+  const scanMeeting = async (c: EnrichedCustomer): Promise<"updated" | "none" | "unavailable"> => {
     let events = calendarEvents
     try {
       const d = await fetch("/api/calendar/meetings").then((r) => r.json())
-      if (d.allEvents?.length) { events = d.allEvents; setCalendarEvents(d.allEvents) }
-    } catch {}
+      if (d?.source !== "google_calendar") return "unavailable"
+      events = Array.isArray(d.allEvents) ? d.allEvents : []
+      setCalendarEvents(events)
+    } catch {
+      return "unavailable"
+    }
     const lastContact = scanLastMeeting(c, events)
     if (!lastContact) return "none"
-    setList((p) => p.map((x) => x.id === id
+    setList((p) => p.map((x) => x.id === c.id
       ? { ...x, lastContact, locked: (x.locked ?? []).filter((k) => k !== "lastContact") }
       : x))
     return "updated"
