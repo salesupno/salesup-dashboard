@@ -72,17 +72,6 @@ const eventCustomerKey = (evt: CalendarEvent) => {
   return `t:${canon(evt.summary).slice(0, 42)}`
 }
 
-const loadExcludedMeetings = () => {
-  try {
-    const raw = localStorage.getItem(MEETING_EXCL_KEY)
-    if (!raw) return new Set<string>()
-    const arr = JSON.parse(raw) as string[]
-    return new Set(arr)
-  } catch {
-    return new Set<string>()
-  }
-}
-
 const oFmt = (n: number) => {
   const a = Math.abs(n)
   return a >= 1e6
