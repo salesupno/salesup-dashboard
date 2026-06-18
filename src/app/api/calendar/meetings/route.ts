@@ -5,6 +5,33 @@ export const dynamic = "force-dynamic"
 
 const MONTHS_NO = ["Jan","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Des"]
 
+async function fetchCalendarList(accessToken: string): Promise<any[]> {
+  const items: any[] = []
+  let pageToken = ""
+
+  for (let page = 0; page < 10; page++) {
+    const params = new URLSearchParams({ maxResults: "250" })
+    if (pageToken) params.set("pageToken", pageToken)
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/users/me/calendarList?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      throw new Error(`Google Calendar list failed: ${res.status} ${body.slice(0, 240)}`)
+    }
+
+    const data = await res.json()
+    items.push(...(data.items ?? []))
+    pageToken = data.nextPageToken ?? ""
+    if (!pageToken) break
+  }
+
+  return items
+}
+
 async function fetchCalendarEvents(
   calendarId: string,
   accessToken: string,
@@ -59,28 +86,22 @@ export async function GET(request: Request) {
       orderBy: "startTime",
     })
 
-    // Fetch all calendars the user has access to
+    // Fetch all calendars the user has access to (paginated)
     stage = "calendarList"
-    const calListRes = await fetch(
-      "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50",
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    )
-    if (!calListRes.ok) {
-      const body = await calListRes.text().catch(() => "")
-      throw new Error(`Google Calendar list failed: ${calListRes.status} ${body.slice(0, 240)}`)
-    }
-    const calList = calListRes.ok ? await calListRes.json() : { items: [] }
-    const allCals: any[] = calList.items ?? []
+    const allCals: any[] = await fetchCalendarList(accessToken)
 
-    // Include: own @salesup.no calendars, shared/team calendars (not gmail/holiday/etc)
+    // Include org/team calendars broadly. If Tommy's calendar is shared/subscribed,
+    // it should now be included even if it was beyond the first calendarList page.
     const relevantCals = allCals.filter((cal: any) => {
       const id: string = cal.id ?? ""
+      const summary: string = (cal.summary ?? "").toLowerCase()
       if (id === "primary") return true
       if (id.endsWith("@salesup.no")) return true
+      if (summary.includes("salesup")) return true
       // shared calendars: not gmail, not group.v.calendar.google.com holiday/contact
       if (id.includes("holiday") || id.includes("contact") || id.endsWith("@gmail.com")) return false
-      // include other calendars the user has explicitly added (shared team calendars)
-      return cal.accessRole === "owner" || cal.accessRole === "writer" || cal.accessRole === "reader"
+      // include calendars the user has explicitly added in any read-capable role
+      return cal.accessRole === "owner" || cal.accessRole === "writer" || cal.accessRole === "reader" || cal.accessRole === "freeBusyReader"
     })
 
     // Fetch events from all relevant calendars in parallel.
