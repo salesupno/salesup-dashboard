@@ -105,6 +105,13 @@ const companyDomain = (domain: string) => {
   return d && !FREEMAIL.has(d) ? d : ""
 }
 
+// "skg.no" -> "Skg" so a customer without a Tripletex match still reads as a name.
+const nameFromDomain = (domain: string) => {
+  const root = domain.split(".")[0].replace(/[-_]+/g, " ").trim()
+  if (!root) return ""
+  return root.replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 // Name shown for an external attendee: Google's display name, else the local part.
 const attendeeName = (a: { email: string; name: string }) =>
   a.name || a.email.split("@")[0].replace(/[._-]+/g, " ")
@@ -340,6 +347,7 @@ type MeetingGroup = {
   domain: string
   attendees: string[]
   monthCounts: Record<string, number>
+  periodMonths: string[]
   inPeriod: number
   inChart: number
   lastDate: string
@@ -481,7 +489,8 @@ function TwoLineChart({ data }: { data: MonthPoint[] }) {
       {win.map((v, i) => (
         <g key={"w" + i}>
           <circle cx={x(i)} cy={yW(v)} r="4.2" fill={MW_WIN_C} stroke="var(--surface)" strokeWidth="2.5" />
-          <text x={x(i)} y={yW(v) + 22} textAnchor="middle" className="num" fontSize="13" fontWeight="700" fill={MW_WIN_C}>{v}</text>
+          {/* Near the baseline the label would land on the month name — flip it above. */}
+          <text x={x(i)} y={yW(v) > H - padB - 16 ? yW(v) - 13 : yW(v) + 22} textAnchor="middle" className="num" fontSize="13" fontWeight="700" fill={MW_WIN_C}>{v}</text>
         </g>
       ))}
       {months.map((m, i) => (
@@ -568,6 +577,7 @@ function MarketCard({
                 <tr>
                   <th style={th}>Kunde</th>
                   <th style={th}>Møtt med</th>
+                  <th style={th}>Måned</th>
                   <th style={{ ...th, textAlign: "right" }}>Møter</th>
                   <th style={{ ...th, textAlign: "center" }}>Ble kunde</th>
                 </tr>
@@ -577,13 +587,34 @@ function MarketCard({
                   <tr key={g.key} style={{ borderTop: "1px solid var(--hairline)" }}>
                     <td style={{ padding: "9px 10px", fontWeight: 800, fontSize: 13.5 }}>
                       {g.name}
-                      {g.domain && (
+                      {g.domain && g.domain.toLowerCase() !== g.name.toLowerCase() && (
                         <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 600 }}>{g.domain}</div>
                       )}
                     </td>
                     <td style={{ padding: "9px 10px", fontSize: 12.5, color: "var(--ink-2)", fontWeight: 600 }}>
                       {g.attendees.length ? g.attendees.slice(0, 3).join(", ") : "—"}
                       {g.attendees.length > 3 && ` +${g.attendees.length - 3}`}
+                    </td>
+                    <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>
+                      {g.periodMonths.length > 0 ? (
+                        <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
+                          {g.periodMonths.map((m) => (
+                            <span
+                              key={m}
+                              style={{
+                                borderRadius: 999, padding: "2px 9px", fontSize: 11.5, fontWeight: 800,
+                                background: "#EEF6EA", color: "#4E8A39", border: "1px solid #DCEBD3",
+                              }}
+                            >
+                              {monthShortLabel(m)}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700 }}>
+                          {g.tripletexWin ? `faktura ${monthShortLabel(g.tripletexWin.month)}` : "—"}
+                        </span>
+                      )}
                     </td>
                     <td className="num" style={{ padding: "9px 10px", textAlign: "right", fontWeight: 800, fontSize: 14, color: g.inPeriod ? "var(--ink)" : "var(--ink-3)" }}>
                       {g.inPeriod || "–"}
@@ -705,10 +736,11 @@ export default function TabOversikt({ period = DEFAULT_PERIOD }: { period?: Peri
       if (!group) {
         group = {
           key,
-          name: customerNameByDomain.get(domain) ?? domain ?? evt.summary ?? "Ukjent",
+          name: customerNameByDomain.get(domain) || nameFromDomain(domain) || evt.summary || "Ukjent",
           domain,
           attendees: [],
           monthCounts: {},
+          periodMonths: [],
           inPeriod: 0,
           inChart: 0,
           lastDate: evt.date,
@@ -733,7 +765,10 @@ export default function TabOversikt({ period = DEFAULT_PERIOD }: { period?: Peri
       if (!group.monthCounts[month]) {
         group.monthCounts[month] = 1
         group.inChart += 1
-        if (periodSet.has(month)) group.inPeriod += 1
+        if (periodSet.has(month)) {
+          group.inPeriod += 1
+          group.periodMonths.push(month)
+        }
       }
       if (evt.date >= group.lastDate) {
         group.lastDate = evt.date
@@ -771,6 +806,7 @@ export default function TabOversikt({ period = DEFAULT_PERIOD }: { period?: Peri
         domain: win.domain,
         attendees: [],
         monthCounts: {},
+        periodMonths: [],
         inPeriod: 0,
         inChart: 0,
         lastDate: win.firstInvoiceDate,

@@ -6,6 +6,13 @@ export const dynamic = "force-dynamic"
 
 const MONTHS_NO = ["Jan","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Des"]
 
+// Calendars always read directly, whether or not the signed-in user added them.
+// Override with TEAM_CALENDAR_IDS (comma-separated) as the team changes.
+const TEAM_CALENDAR_IDS = (process.env.TEAM_CALENDAR_IDS ?? "tommy@salesup.no")
+  .split(",")
+  .map((id) => id.trim().toLowerCase())
+  .filter(Boolean)
+
 async function fetchCalendarList(accessToken: string): Promise<any[]> {
   const items: any[] = []
   let pageToken = ""
@@ -96,8 +103,8 @@ export async function GET(request: Request) {
     stage = "calendarList"
     const allCals: any[] = await fetchCalendarList(accessToken)
 
-    // Include org/team calendars broadly. If Tommy's calendar is shared/subscribed,
-    // it should now be included even if it was beyond the first calendarList page.
+    // Include org/team calendars broadly. If a colleague's calendar is
+    // shared/subscribed, it is included even if it was beyond the first page.
     const relevantCals = allCals.filter((cal: any) => {
       const id: string = cal.id ?? ""
       const summary: string = (cal.summary ?? "").toLowerCase()
@@ -110,16 +117,28 @@ export async function GET(request: Request) {
       return cal.accessRole === "owner" || cal.accessRole === "writer" || cal.accessRole === "reader" || cal.accessRole === "freeBusyReader"
     })
 
+    // A colleague's calendar only shows up in calendarList once the signed-in user
+    // has actually ADDED it. Shared-but-not-added calendars are still readable by
+    // id, so team calendars are always requested directly — otherwise meetings the
+    // signed-in user was not invited to are invisible.
+    const roleById = new Map<string, string>(
+      allCals.map((cal: any) => [String(cal.id ?? ""), String(cal.accessRole ?? "")])
+    )
+    const calendarIds: string[] = []
+    for (const id of [...relevantCals.map((c: any) => String(c.id ?? "")), ...TEAM_CALENDAR_IDS]) {
+      if (id && !calendarIds.includes(id)) calendarIds.push(id)
+    }
+
     // Fetch events from all relevant calendars in parallel.
     // Important: one forbidden/shared calendar must not kill the whole sync,
     // otherwise a single inaccessible calendar hides all real meetings.
     stage = "events"
-    const calEventFetches = relevantCals.map((cal: any) =>
-      fetchCalendarEvents(cal.id as string, accessToken, params)
+    const calResults = await Promise.all(
+      calendarIds.map((id) => fetchCalendarEvents(id, accessToken, params))
     )
-    const calResults = await Promise.all(calEventFetches)
 
-    // Merge and deduplicate by event ID
+    // Merge and deduplicate by event ID. The same invite on two colleagues'
+    // calendars carries the same id, so nothing is double counted.
     const seenIds = new Set<string>()
     const events: any[] = []
     const failedCalendars = calResults.filter((r) => !r.ok)
@@ -132,10 +151,27 @@ export async function GET(request: Request) {
         const key = evt.id ?? evt.iCalUID ?? JSON.stringify(evt)
         if (!seenIds.has(key)) {
           seenIds.add(key)
-          events.push(evt)
+          events.push({ ...evt, __calendarId: result.id })
         }
       }
     }
+
+    // Per-calendar diagnostics: without this an empty result is indistinguishable
+    // from a sharing problem on someone else's calendar.
+    const calendars = calResults.map((result) => {
+      const role = roleById.get(result.id) ?? ""
+      return {
+        id: result.id,
+        ok: result.ok,
+        status: result.status,
+        events: result.items.length,
+        inCalendarList: roleById.has(result.id),
+        accessRole: role,
+        // freeBusyReader hides titles and attendees, so such events can never be classified.
+        detailsVisible: role !== "freeBusyReader",
+        error: result.ok ? "" : result.body.slice(0, 160),
+      }
+    })
 
     // Count meetings per month (events with ≥2 attendees or "møte" in title)
     const monthMap = new Map<string, number>()
@@ -150,6 +186,7 @@ export async function GET(request: Request) {
       date: string
       attendeeEmails: string[]
       attendees: Array<{ email: string; name: string }>
+      calendarId: string
     }> = []
     for (const evt of events) {
       const start = evt.start?.dateTime ?? evt.start?.date
@@ -163,7 +200,14 @@ export async function GET(request: Request) {
         .filter((a: { email: string }) => a.email && !a.email.endsWith("@resource.calendar.google.com"))
       const attendeeEmails: string[] = attendees.map((a) => a.email)
       // Title keeps its original casing for display; classification lowercases itself.
-      allEvents.push({ id, summary: evt.summary ?? "", date: start, attendeeEmails, attendees })
+      allEvents.push({
+        id,
+        summary: evt.summary ?? "",
+        date: start,
+        attendeeEmails,
+        attendees,
+        calendarId: evt.__calendarId ?? "",
+      })
       const key = MONTHS_NO[new Date(start).getMonth()]
       if (!monthMap.has(key)) continue
       const isCustomerMeeting =
@@ -183,6 +227,7 @@ export async function GET(request: Request) {
       allEvents,
       source: "google_calendar",
       window: { from: from.toISOString(), to: to.toISOString(), end, months },
+      calendars,
       warnings: failedCalendars.map((r) => ({ id: r.id, status: r.status, body: r.body.slice(0, 200) })),
       debug: {
         stage,

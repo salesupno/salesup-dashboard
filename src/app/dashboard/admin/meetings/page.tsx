@@ -16,6 +16,17 @@ type TxCustomer = {
   domain?: string
 }
 
+type CalendarStatus = {
+  id: string
+  ok: boolean
+  status: number
+  events: number
+  inCalendarList: boolean
+  accessRole: string
+  detailsVisible: boolean
+  error: string
+}
+
 const EXCL_KEY = "su_meeting_exclusions_v1"
 const TAG_KEY = "su_meeting_tags_v2"
 
@@ -56,6 +67,7 @@ export default function MeetingsAdminPage() {
   const [customers, setCustomers] = useState<TxCustomer[]>([])
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [tags, setTags] = useState<Record<string, MeetingCategory>>({})
+  const [calendars, setCalendars] = useState<CalendarStatus[]>([])
   const [q, setQ] = useState("")
 
   useEffect(() => {
@@ -63,7 +75,10 @@ export default function MeetingsAdminPage() {
     setTags(loadTags())
     fetch("/api/calendar/meetings?months=12")
       .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d.allEvents)) setEvents(d.allEvents) })
+      .then((d) => {
+        if (Array.isArray(d.allEvents)) setEvents(d.allEvents)
+        if (Array.isArray(d.calendars)) setCalendars(d.calendars)
+      })
       .catch(() => {})
     fetch("/api/tripletex/customers")
       .then((r) => r.json())
@@ -174,6 +189,44 @@ export default function MeetingsAdminPage() {
         Velg kun nye kundemøter. Interne møter, eksisterende kunder og partnere kan klassifiseres bort.
       </p>
 
+      {calendars.length > 0 && (
+        <div style={{ border: "1px solid var(--hairline)", borderRadius: 14, padding: "12px 14px", marginBottom: 14, background: "var(--surface)" }}>
+          <div style={{ fontSize: 12, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--ink-3)", fontWeight: 700, marginBottom: 8 }}>
+            Kalendere som leses
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {calendars.map((cal) => {
+              const problem = !cal.ok || !cal.detailsVisible
+              const tone = !cal.ok ? "#B4483C" : !cal.detailsVisible ? "#9A6A00" : "#4E8A39"
+              const note = !cal.ok
+                ? `ingen tilgang (${cal.status})`
+                : !cal.detailsVisible
+                  ? "kun ledig/opptatt — deling må settes til «se alle detaljer»"
+                  : `${cal.events} hendelser`
+              return (
+                <span
+                  key={cal.id}
+                  title={cal.error || note}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 8, borderRadius: 999,
+                    padding: "6px 12px", border: `1px solid ${problem ? tone : "var(--hairline)"}`,
+                    background: problem ? tone + "14" : "var(--surface)", fontWeight: 700, fontSize: 12.5,
+                    color: problem ? tone : "var(--ink-2)",
+                  }}
+                >
+                  <span style={{ width: 9, height: 9, borderRadius: 999, background: tone }} />
+                  {cal.id}
+                  <span style={{ fontWeight: 600, color: problem ? tone : "var(--ink-3)" }}>· {note}</span>
+                  {!cal.inCalendarList && (
+                    <span style={{ fontWeight: 600, color: "var(--ink-3)" }}>· hentet direkte</span>
+                  )}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
         <input
           value={q}
@@ -253,6 +306,9 @@ export default function MeetingsAdminPage() {
                   </td>
                   <td style={{ padding: "10px 12px", fontWeight: 700 }}>
                     {e.summary || "(uten tittel)"}
+                    {e.calendarId && (
+                      <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 600 }}>{e.calendarId}</div>
+                    )}
                   </td>
                   <td style={{ padding: "10px 12px" }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

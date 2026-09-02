@@ -8,6 +8,7 @@ export type MeetingEvent = {
   date: string
   attendeeEmails: string[]
   attendees?: MeetingAttendee[]
+  calendarId?: string
 }
 
 export const isInternalEmail = (email: string) =>
