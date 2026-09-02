@@ -8,10 +8,16 @@ const MONTHS_NO = ["Jan","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","
 
 // Calendars always read directly, whether or not the signed-in user added them.
 // Override with TEAM_CALENDAR_IDS (comma-separated) as the team changes.
+const ORG_DOMAIN = "salesup.no"
+
+// Calendars always read directly, even before anyone shows up as an attendee.
 const TEAM_CALENDAR_IDS = (process.env.TEAM_CALENDAR_IDS ?? "tommy@salesup.no")
   .split(",")
   .map((id) => id.trim().toLowerCase())
   .filter(Boolean)
+
+// Cap the colleague discovery pass so a large org can never fan out unbounded.
+const MAX_DISCOVERED_CALENDARS = 12
 
 async function fetchCalendarList(accessToken: string): Promise<any[]> {
   const items: any[] = []
@@ -137,12 +143,36 @@ export async function GET(request: Request) {
       calendarIds.map((id) => fetchCalendarEvents(id, accessToken, params))
     )
 
+    // Second pass: every @salesup.no colleague seen as an attendee is a calendar
+    // worth trying, whether or not anyone configured their address. This keeps the
+    // team list correct on its own as people join, and an unshared calendar simply
+    // comes back 403/404 and is reported below.
+    stage = "colleagues"
+    const colleagues = new Set<string>()
+    for (const result of calResults) {
+      for (const evt of result.items) {
+        for (const attendee of evt.attendees ?? []) {
+          const email = String(attendee.email ?? "").toLowerCase().trim()
+          if (email.endsWith(`@${ORG_DOMAIN}`) && !calendarIds.includes(email)) colleagues.add(email)
+        }
+        const organizer = String(evt.organizer?.email ?? "").toLowerCase().trim()
+        if (organizer.endsWith(`@${ORG_DOMAIN}`) && !calendarIds.includes(organizer)) colleagues.add(organizer)
+      }
+    }
+    const discoveredIds = Array.from(colleagues).slice(0, MAX_DISCOVERED_CALENDARS)
+    const discoveredResults = await Promise.all(
+      discoveredIds.map((id) => fetchCalendarEvents(id, accessToken, params))
+    )
+
+    const allResults = [...calResults, ...discoveredResults]
+    const discovered = new Set(discoveredIds)
+
     // Merge and deduplicate by event ID. The same invite on two colleagues'
     // calendars carries the same id, so nothing is double counted.
     const seenIds = new Set<string>()
     const events: any[] = []
-    const failedCalendars = calResults.filter((r) => !r.ok)
-    for (const result of calResults) {
+    const failedCalendars = allResults.filter((r) => !r.ok)
+    for (const result of allResults) {
       if (!result.ok) {
         console.warn("Google Calendar skipped calendar:", result.id, result.status, result.body.slice(0, 120))
         continue
@@ -158,7 +188,7 @@ export async function GET(request: Request) {
 
     // Per-calendar diagnostics: without this an empty result is indistinguishable
     // from a sharing problem on someone else's calendar.
-    const calendars = calResults.map((result) => {
+    const calendars = allResults.map((result) => {
       const role = roleById.get(result.id) ?? ""
       return {
         id: result.id,
@@ -166,6 +196,7 @@ export async function GET(request: Request) {
         status: result.status,
         events: result.items.length,
         inCalendarList: roleById.has(result.id),
+        discovered: discovered.has(result.id),
         accessRole: role,
         // freeBusyReader hides titles and attendees, so such events can never be classified.
         detailsVisible: role !== "freeBusyReader",

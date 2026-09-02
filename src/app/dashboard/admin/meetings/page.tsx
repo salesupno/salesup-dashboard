@@ -22,6 +22,7 @@ type CalendarStatus = {
   status: number
   events: number
   inCalendarList: boolean
+  discovered?: boolean
   accessRole: string
   detailsVisible: boolean
   error: string
@@ -218,7 +219,9 @@ export default function MeetingsAdminPage() {
                   {cal.id}
                   <span style={{ fontWeight: 600, color: problem ? tone : "var(--ink-3)" }}>· {note}</span>
                   {!cal.inCalendarList && (
-                    <span style={{ fontWeight: 600, color: "var(--ink-3)" }}>· hentet direkte</span>
+                    <span style={{ fontWeight: 600, color: "var(--ink-3)" }}>
+                      · {cal.discovered ? "funnet via deltakere" : "hentet direkte"}
+                    </span>
                   )}
                 </span>
               )
