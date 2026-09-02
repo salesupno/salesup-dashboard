@@ -85,6 +85,8 @@ const PARTNER_TITLE_WORDS = [
 
 const IGNORE_TITLE_WORDS = ["out of office", "ooo", "ferie", "holiday", "blocked"]
 
+// Customer keys collapse repeated letters so small spelling differences still
+// group together. NEVER use this for keyword matching: it turns "ooo" into "o".
 const canon = (s: string) =>
   s.toLowerCase()
     .replace(/æ/g, "ae")
@@ -92,6 +94,25 @@ const canon = (s: string) =>
     .replace(/å/g, "aa")
     .replace(/[^a-z0-9]+/g, "")
     .replace(/(.)\1+/g, "$1")
+
+// Title matching keeps word boundaries and repeated letters intact.
+const normTitle = (s: string) =>
+  s.toLowerCase()
+    .replace(/æ/g, "ae")
+    .replace(/ø/g, "o")
+    .replace(/å/g, "aa")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+
+// A keyword matches only at the start of a word, so "intro" still catches
+// "intromøte" while "ooo" no longer catches every title containing an "o".
+const hasKeyword = (title: string, words: string[]) => {
+  const haystack = ` ${title} `
+  return words.some((word) => {
+    const needle = normTitle(word)
+    return !!needle && haystack.includes(` ${needle}`)
+  })
+}
 
 export const externalDomains = (evt: MeetingEvent) =>
   Array.from(new Set(
@@ -119,16 +140,16 @@ export const suggestMeetingClassification = (
   knownCustomerDomains: Set<string>
 ): MeetingClassification => {
   const summary = evt.summary.toLowerCase()
-  const summaryCanon = canon(summary)
+  const title = normTitle(summary)
   const domains = externalDomains(evt)
   const hasKnownCustomerDomain = domains.some((d) => knownCustomerDomains.has(d))
   const hasInternalAttendees = internalOnly(evt)
-  const hasAcquisitionSignal = ACQUISITION_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))
-  const hasPartnerSignal = PARTNER_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))
-  const hasInternalTitleSignal = INTERNAL_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))
+  const hasAcquisitionSignal = hasKeyword(title, ACQUISITION_TITLE_WORDS)
+  const hasPartnerSignal = hasKeyword(title, PARTNER_TITLE_WORDS)
+  const hasInternalTitleSignal = hasKeyword(title, INTERNAL_TITLE_WORDS)
   const hasCrossTitle = summary.includes(" x ") || summary.includes(" × ")
 
-  if (IGNORE_TITLE_WORDS.some((w) => summaryCanon.includes(canon(w)))) {
+  if (hasKeyword(title, IGNORE_TITLE_WORDS)) {
     return { category: "ignore", confidence: 95, reason: "tittel signaliserer at møtet ikke er salgsmøte", domains }
   }
 

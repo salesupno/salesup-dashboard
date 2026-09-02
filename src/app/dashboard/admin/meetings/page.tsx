@@ -29,7 +29,9 @@ type CalendarStatus = {
 }
 
 const EXCL_KEY = "su_meeting_exclusions_v1"
-const TAG_KEY = "su_meeting_tags_v2"
+// v3: the v2 cache was written by a classifier whose "ignore" rule matched every
+// title containing the letter "o", so those stored answers must not be reused.
+const TAG_KEY = "su_meeting_tags_v3"
 
 const loadTags = () => {
   try {

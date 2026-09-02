@@ -32,7 +32,7 @@ import {
 } from "@/lib/period"
 
 const GOALS_KEY = "su_goals_v5"
-const MEETING_TAG_KEY = "su_meeting_tags_v2"
+const MEETING_TAG_KEY = "su_meeting_tags_v3"
 const WEEKLY_BOARD_KEY = "su_weekly_focus_v1"
 const CONVERSION_KEY = "su_meeting_conversions_v1"
 
