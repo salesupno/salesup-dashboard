@@ -9,6 +9,15 @@ import TabOversikt from "@/components/tabs/TabOversikt"
 import TabKunder from "@/components/tabs/TabKunder"
 import TabKapasitet from "@/components/tabs/TabKapasitet"
 import { META } from "@/lib/data"
+import {
+  DEFAULT_PERIOD,
+  LAST_OPTIONS,
+  monthLongLabel,
+  monthPickerOptions,
+  parsePeriod,
+  periodLabel,
+  serializePeriod,
+} from "@/lib/period"
 
 const TABS = [
   { id: "oversikt",  label: "Oversikt",  title: "Det viktigste i dag",                sub: "" },
@@ -18,7 +27,8 @@ const TABS = [
 
 export default function DashboardShell() {
   const [tab, setTab] = useState("oversikt")
-  const [period, setPeriod] = useState(3)
+  const [period, setPeriod] = useState(DEFAULT_PERIOD)
+  const monthOptions = monthPickerOptions(12)
   const { data: session } = useSession()
   const t = TABS.find((x) => x.id === tab)!
 
@@ -92,21 +102,28 @@ export default function DashboardShell() {
               <Icon name="calendar" size={16} />
               <span style={{ display: "flex", flexDirection: "column", lineHeight: 1, alignItems: "flex-start" }}>
                 <span style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 500 }}>Periode</span>
-                <span>Siste {period} måneder</span>
+                <span>{periodLabel(period)}</span>
               </span>
               <Icon name="chevron-r" size={14} style={{ transform: "rotate(90deg)", color: "var(--ink-3)" }} />
             </button>
             <select
-              value={period}
-              onChange={e => setPeriod(Number(e.target.value))}
+              value={serializePeriod(period)}
+              onChange={e => setPeriod(parsePeriod(e.target.value))}
               aria-label="Velg periode"
               style={{
                 position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%",
               }}
             >
-              {[1, 3, 6, 12].map(m => (
-                <option key={m} value={m}>Siste {m} måneder</option>
-              ))}
+              <optgroup label="Rullerende">
+                {LAST_OPTIONS.map(m => (
+                  <option key={m} value={`last:${m}`}>Siste {m} {m === 1 ? "måned" : "måneder"}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Enkeltmåned">
+                {monthOptions.map(key => (
+                  <option key={key} value={`month:${key}`}>{monthLongLabel(key)}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
           <button className="pill-btn">

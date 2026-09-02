@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
+import { monthKey } from "@/lib/period"
 
 export const dynamic = "force-dynamic"
 
@@ -65,6 +66,8 @@ async function fetchCalendarEvents(
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const months = Math.min(12, Math.max(1, parseInt(searchParams.get("months") ?? "6", 10)))
+  const endParam = searchParams.get("end")
+  const end = endParam && /^\d{4}-(0[1-9]|1[0-2])$/.test(endParam) ? endParam : monthKey(new Date())
   let stage = "init"
 
   try {
@@ -75,12 +78,15 @@ export async function GET(request: Request) {
     if (!accessToken) throw new Error("No access token — re-login required for calendar access")
 
     const now = new Date()
-    const from = new Date(now)
-    from.setMonth(from.getMonth() - months)
+    // The window ends with the selected month (capped at today) and spans `months`
+    // months back, so picking "August" still fetches the meetings around it.
+    const endOfSelected = new Date(parseInt(end.slice(0, 4), 10), parseInt(end.slice(5, 7), 10), 0, 23, 59, 59)
+    const to = new Date(Math.min(endOfSelected.getTime(), now.getTime()))
+    const from = new Date(to.getFullYear(), to.getMonth() - (months - 1), 1)
 
     const params = new URLSearchParams({
       timeMin: from.toISOString(),
-      timeMax: now.toISOString(),
+      timeMax: to.toISOString(),
       maxResults: "500",
       singleEvents: "true",
       orderBy: "startTime",
@@ -134,20 +140,30 @@ export async function GET(request: Request) {
     // Count meetings per month (events with ≥2 attendees or "møte" in title)
     const monthMap = new Map<string, number>()
     for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now)
-      d.setMonth(d.getMonth() - i)
+      const d = new Date(to.getFullYear(), to.getMonth() - i, 1)
       monthMap.set(MONTHS_NO[d.getMonth()], 0)
     }
 
-    const allEvents: Array<{ id: string; summary: string; date: string; attendeeEmails: string[] }> = []
+    const allEvents: Array<{
+      id: string
+      summary: string
+      date: string
+      attendeeEmails: string[]
+      attendees: Array<{ email: string; name: string }>
+    }> = []
     for (const evt of events) {
       const start = evt.start?.dateTime ?? evt.start?.date
       if (!start) continue
       const id = evt.id ?? evt.iCalUID ?? `${evt.summary ?? ""}-${start}`
-      const attendeeEmails: string[] = (evt.attendees ?? [])
-        .map((a: any) => (a.email ?? "").toLowerCase())
-        .filter((e: string) => e && !e.endsWith("@resource.calendar.google.com"))
-      allEvents.push({ id, summary: (evt.summary ?? "").toLowerCase(), date: start, attendeeEmails })
+      const attendees: Array<{ email: string; name: string }> = (evt.attendees ?? [])
+        .map((a: any) => ({
+          email: String(a.email ?? "").toLowerCase(),
+          name: String(a.displayName ?? "").trim(),
+        }))
+        .filter((a: { email: string }) => a.email && !a.email.endsWith("@resource.calendar.google.com"))
+      const attendeeEmails: string[] = attendees.map((a) => a.email)
+      // Title keeps its original casing for display; classification lowercases itself.
+      allEvents.push({ id, summary: evt.summary ?? "", date: start, attendeeEmails, attendees })
       const key = MONTHS_NO[new Date(start).getMonth()]
       if (!monthMap.has(key)) continue
       const isCustomerMeeting =
@@ -166,6 +182,7 @@ export async function GET(request: Request) {
       monthly,
       allEvents,
       source: "google_calendar",
+      window: { from: from.toISOString(), to: to.toISOString(), end, months },
       warnings: failedCalendars.map((r) => ({ id: r.id, status: r.status, body: r.body.slice(0, 200) })),
       debug: {
         stage,

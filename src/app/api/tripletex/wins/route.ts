@@ -1,91 +1,73 @@
 import { NextResponse } from "next/server"
-import { TRIPLETEX_BASE as BASE, createTripletexSession } from "@/lib/tripletex"
-
-const MONTHS_NO = ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Des"]
+import { createTripletexSession, fetchAllInvoices, fetchCustomerIndex } from "@/lib/tripletex"
+import { monthKey, monthKeyFromDate, monthKeysEndingAt, monthShortLabel } from "@/lib/period"
 
 const ymd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 
-const monthKey = (isoDate: string) => isoDate.slice(0, 7)
+const endOfMonth = (key: string) =>
+  new Date(parseInt(key.slice(0, 4), 10), parseInt(key.slice(5, 7), 10), 0)
 
-const monthLabel = (key: string) => {
-  const [y, m] = key.split("-")
-  const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1)
-  return MONTHS_NO[d.getMonth()]
-}
-
-async function fetchInvoices(authHeader: string, from: string, to: string): Promise<any[]> {
-  const out: any[] = []
-  const pageSize = 1000
-  let offset = 0
-
-  for (let page = 0; page < 100; page++) {
-    const res = await fetch(
-      `${BASE}/invoice?invoiceDateFrom=${from}&invoiceDateTo=${to}` +
-        `&from=${offset}&count=${pageSize}&fields=invoiceDate,customer(id)`,
-      { headers: { Authorization: authHeader } }
-    )
-    if (!res.ok) break
-    const data = await res.json()
-    const values: any[] = data.values ?? []
-    out.push(...values)
-    if (values.length < pageSize) break
-    offset += pageSize
-  }
-
-  return out
-}
+const isMonthKey = (v: string | null): v is string => !!v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v)
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const months = Math.min(12, Math.max(1, parseInt(searchParams.get("months") ?? "6", 10)))
+  const endParam = searchParams.get("end")
+  const now = new Date()
+  const end = isMonthKey(endParam) ? endParam : monthKey(now)
+  const keys = monthKeysEndingAt(end, months)
 
   try {
     const authHeader = await createTripletexSession()
-    const now = new Date()
 
     // Pull a wide date window so we can determine each customer's first invoice.
     const historyStart = new Date(2010, 0, 1)
+    const rangeEnd = new Date(Math.min(endOfMonth(end).getTime(), now.getTime()))
 
-    const keys: string[] = []
-    for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      keys.push(ymd(d).slice(0, 7))
-    }
-    const invoices = await fetchInvoices(authHeader, ymd(historyStart), ymd(now))
+    const [invoices, customerIndex] = await Promise.all([
+      fetchAllInvoices(authHeader, ymd(historyStart), ymd(rangeEnd)),
+      fetchCustomerIndex(authHeader),
+    ])
 
     const firstInvoiceByCustomer = new Map<number, string>()
     for (const inv of invoices) {
-      const cid = inv.customer?.id
-      const date = inv.invoiceDate ?? ""
-      if (typeof cid !== "number" || !date) continue
-      const current = firstInvoiceByCustomer.get(cid)
-      if (!current || date < current) firstInvoiceByCustomer.set(cid, date)
+      if (inv.customerId == null || !inv.date) continue
+      const current = firstInvoiceByCustomer.get(inv.customerId)
+      if (!current || inv.date < current) firstInvoiceByCustomer.set(inv.customerId, inv.date)
     }
 
-    const byMonth = new Map<string, { wins: number; uniqueCustomers: Set<number> }>()
-    for (const key of keys) byMonth.set(key, { wins: 0, uniqueCustomers: new Set<number>() })
+    const allowed = new Set(keys)
+    const byMonth = new Map<string, number>(keys.map((k) => [k, 0]))
+    const newCustomers: Array<{ id: number; name: string; domain: string; month: string; firstInvoiceDate: string }> = []
 
     for (const [cid, firstDate] of firstInvoiceByCustomer.entries()) {
-      const k = monthKey(firstDate)
-      const bucket = byMonth.get(k)
-      if (!bucket) continue
-      bucket.wins += 1
-      bucket.uniqueCustomers.add(cid)
+      const k = monthKeyFromDate(firstDate)
+      if (!allowed.has(k)) continue
+      byMonth.set(k, (byMonth.get(k) ?? 0) + 1)
+      const meta = customerIndex.get(cid)
+      newCustomers.push({
+        id: cid,
+        name: meta?.name || "Ukjent kunde",
+        domain: meta?.domain ?? "",
+        month: k,
+        firstInvoiceDate: firstDate,
+      })
     }
+
+    newCustomers.sort((a, b) => b.firstInvoiceDate.localeCompare(a.firstInvoiceDate))
 
     const monthly = keys.map((k) => ({
       key: k,
-      month: monthLabel(k),
-      wins: byMonth.get(k)?.wins ?? 0,
-      uniqueCustomers: byMonth.get(k)?.uniqueCustomers.size ?? 0,
+      month: monthShortLabel(k),
+      wins: byMonth.get(k) ?? 0,
     }))
 
-    return NextResponse.json({ monthly, months, source: "tripletex" })
+    return NextResponse.json({ monthly, newCustomers, months, end, source: "tripletex" })
   } catch (err) {
     console.error("Tripletex wins error:", err)
-    return NextResponse.json({ monthly: [], months, source: "mock" })
+    return NextResponse.json({ monthly: [], newCustomers: [], months, end, source: "mock" })
   }
 }

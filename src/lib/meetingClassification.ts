@@ -1,10 +1,30 @@
 export type MeetingCategory = "new_customer" | "internal" | "existing_customer" | "partner" | "ignore"
 
+export type MeetingAttendee = { email: string; name: string }
+
 export type MeetingEvent = {
   id: string
   summary: string
   date: string
   attendeeEmails: string[]
+  attendees?: MeetingAttendee[]
+}
+
+export const isInternalEmail = (email: string) =>
+  INTERNAL_DOMAINS.some((d) => email.endsWith(`@${d}`)) || email.endsWith("@resource.calendar.google.com")
+
+// The people we actually met — external attendees only, named where Google knows them.
+export const externalAttendees = (evt: MeetingEvent): MeetingAttendee[] => {
+  const source = evt.attendees ?? evt.attendeeEmails.map((email) => ({ email, name: "" }))
+  const seen = new Set<string>()
+  const out: MeetingAttendee[] = []
+  for (const a of source) {
+    const email = String(a.email ?? "").toLowerCase().trim()
+    if (!email || isInternalEmail(email) || seen.has(email)) continue
+    seen.add(email)
+    out.push({ email, name: (a.name ?? "").trim() })
+  }
+  return out
 }
 
 export type MeetingClassification = {
