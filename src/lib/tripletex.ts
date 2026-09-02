@@ -11,7 +11,14 @@ export function fmtDate(d: Date): string {
   return d.toISOString().split("T")[0]
 }
 
-export async function createTripletexSession(): Promise<string> {
+// Tripletex answers 409 RevisionException when sessions are created concurrently,
+// and the dashboard loads four routes at once. One cached session is shared, and
+// callers that arrive while a session is being created await the same request.
+const SESSION_CACHE_MS = 30 * 60 * 1000
+let cachedSession: { header: string; expires: number } | null = null
+let sessionInFlight: Promise<string> | null = null
+
+async function requestSession(): Promise<string> {
   const refreshToken = (process.env.TRIPLETEX_TOKEN ?? "").trim()
   if (!refreshToken) throw new Error("Tripletex: missing TRIPLETEX_TOKEN")
 
@@ -25,6 +32,23 @@ export async function createTripletexSession(): Promise<string> {
   const sessionToken = body.value.token
   // Internal integration: username 0, session token as password.
   return "Basic " + Buffer.from(`0:${sessionToken}`).toString("base64")
+}
+
+export async function createTripletexSession(): Promise<string> {
+  if (cachedSession && Date.now() < cachedSession.expires) return cachedSession.header
+  if (sessionInFlight) return sessionInFlight
+
+  const pending = requestSession()
+    .then((header) => {
+      cachedSession = { header, expires: Date.now() + SESSION_CACHE_MS }
+      return header
+    })
+    .finally(() => {
+      if (sessionInFlight === pending) sessionInFlight = null
+    })
+
+  sessionInFlight = pending
+  return pending
 }
 
 type RawInvoice = {
@@ -42,11 +66,40 @@ export type TripletexInvoice = {
 
 // Every invoice in [from, to] (inclusive), paginated so nothing is missed.
 // Bounded page count so a runaway response can never hang a route.
+const INVOICE_CACHE_MS = 3 * 60 * 1000
+const invoiceCache = new Map<string, { at: number; data: TripletexInvoice[] }>()
+const invoiceInFlight = new Map<string, Promise<TripletexInvoice[]>>()
+
+// Wins and invoices both need the same full history. Fetching it twice per page
+// load doubles a slow, many-page call for no gain, so results are shared briefly.
 export async function fetchAllInvoices(
   authHeader: string,
   from: string,
   to: string,
   maxPages = 60
+): Promise<TripletexInvoice[]> {
+  const key = `${from}|${to}|${maxPages}`
+  const hit = invoiceCache.get(key)
+  if (hit && Date.now() - hit.at < INVOICE_CACHE_MS) return hit.data
+  const inFlight = invoiceInFlight.get(key)
+  if (inFlight) return inFlight
+
+  const pending = fetchInvoicePages(authHeader, from, to, maxPages)
+    .then((data) => {
+      invoiceCache.set(key, { at: Date.now(), data })
+      return data
+    })
+    .finally(() => { invoiceInFlight.delete(key) })
+
+  invoiceInFlight.set(key, pending)
+  return pending
+}
+
+async function fetchInvoicePages(
+  authHeader: string,
+  from: string,
+  to: string,
+  maxPages: number
 ): Promise<TripletexInvoice[]> {
   const out: TripletexInvoice[] = []
   const pageSize = 1000

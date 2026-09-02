@@ -135,6 +135,14 @@ export async function GET(request: Request) {
     return NextResponse.json({
       periodKeys,
       total: { count: totalCount, amount: Math.round(totalAmount) },
+      topCustomers: customers.slice(0, 6).map((c) => ({
+        id: c.id,
+        name: c.name,
+        amount: Math.round(c.amount),
+        count: c.count,
+        category: c.category,
+        newCustomer: c.newCustomer,
+      })),
       newCustomerCount: customers.filter((c) => c.newCustomer).length,
       newCustomerAmount: Math.round(customers.filter((c) => c.newCustomer).reduce((s, c) => s + c.amount, 0)),
       categories,
@@ -147,6 +155,7 @@ export async function GET(request: Request) {
       total: { count: 0, amount: 0 },
       newCustomerCount: 0,
       newCustomerAmount: 0,
+      topCustomers: [],
       categories: [],
       source: "mock",
     })
