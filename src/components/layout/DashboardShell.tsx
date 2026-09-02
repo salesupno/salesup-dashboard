@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { signOut } from "next-auth/react"
 import Icon from "@/components/ui/Icon"
@@ -52,6 +53,14 @@ export default function DashboardShell() {
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <Link
+            href="/dashboard/admin/meetings"
+            className="pill-btn ghost"
+            style={{ padding: "0 14px", textDecoration: "none" }}
+            title="Admin · møtekontroll"
+          >
+            Admin
+          </Link>
           <button className="round-btn" aria-label="Søk">
             <Icon name="search" size={18} />
           </button>

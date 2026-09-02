@@ -13,6 +13,7 @@ import {
 
 const GOALS_KEY = "su_goals_v5"
 const MEETING_TAG_KEY = "su_meeting_tags_v2"
+const WEEKLY_BOARD_KEY = "su_weekly_focus_v1"
 const MONTHS_NO = ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Des"]
 
 type CalendarEvent = {
@@ -27,6 +28,21 @@ type MonthlyWins = {
   month: string
   wins: number
 }
+
+type WeeklyFocus = {
+  id: "seo" | "proj" | "mynk"
+  label: string
+  target: string
+  input: string
+  output: string
+  status: "red" | "yellow" | "green"
+}
+
+const WEEKLY_FOCUS_SEED: WeeklyFocus[] = [
+  { id: "seo", label: "SEO / Ads", target: "10 samtaler", input: "", output: "", status: "yellow" },
+  { id: "proj", label: "Prosjekter", target: "5 tilbud sendt", input: "", output: "", status: "yellow" },
+  { id: "mynk", label: "Mynk-kunder", target: "50 e-poster sendt", input: "", output: "", status: "yellow" },
+]
 
 const canon = (s: string) =>
   s.toLowerCase()
@@ -191,6 +207,102 @@ function GoalBoard() {
         })}
       </div>
     </div>
+  )
+}
+
+const currentWeek = () => {
+  const date = new Date()
+  const day = (date.getDay() + 6) % 7
+  date.setDate(date.getDate() - day + 3)
+  const firstThursday = new Date(date.getFullYear(), 0, 4)
+  const week = 1 + Math.round(((date.getTime() - firstThursday.getTime()) / 86400000 - 3 + ((firstThursday.getDay() + 6) % 7)) / 7)
+  return `${date.getFullYear()}-W${String(week).padStart(2, "0")}`
+}
+
+const loadWeeklyFocus = (week: string): WeeklyFocus[] => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(WEEKLY_BOARD_KEY) ?? "{}") as Record<string, WeeklyFocus[]>
+    if (stored[week]) return WEEKLY_FOCUS_SEED.map((seed) => ({ ...seed, ...stored[week].find((item) => item.id === seed.id) }))
+  } catch {}
+  return WEEKLY_FOCUS_SEED.map((item) => ({ ...item }))
+}
+
+function WeeklyFocusBoard() {
+  const [week, setWeek] = useState(currentWeek)
+  const [items, setItems] = useState<WeeklyFocus[]>(() =>
+    typeof window === "undefined" ? WEEKLY_FOCUS_SEED : loadWeeklyFocus(currentWeek())
+  )
+
+  const saveItems = (nextItems: WeeklyFocus[], nextWeek = week) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(WEEKLY_BOARD_KEY) ?? "{}") as Record<string, WeeklyFocus[]>
+      localStorage.setItem(WEEKLY_BOARD_KEY, JSON.stringify({ ...stored, [nextWeek]: nextItems }))
+    } catch {}
+  }
+
+  const changeWeek = (nextWeek: string) => {
+    setWeek(nextWeek)
+    setItems(loadWeeklyFocus(nextWeek))
+  }
+
+  const updateItem = (id: WeeklyFocus["id"], field: keyof Omit<WeeklyFocus, "id" | "label">, value: string) => {
+    const nextItems = items.map((item) => item.id === id ? { ...item, [field]: value } : item)
+    setItems(nextItems)
+    saveItems(nextItems)
+  }
+
+  const statusLabel = { red: "Rød", yellow: "Gul", green: "Grønn" }
+
+  return (
+    <section className="card" style={{ padding: "22px 30px", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--ink-3)" }}>Ukentlig veksttavle</div>
+          <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 600, marginTop: 3 }}>Planlagt innsats, faktisk innsats og resultat per fokusområde</div>
+        </div>
+        <input
+          type="week"
+          value={week}
+          onChange={(event) => changeWeek(event.target.value)}
+          aria-label="Velg uke"
+          style={{ border: "1px solid var(--hairline)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)", padding: "8px 10px", font: "inherit", fontWeight: 700 }}
+        />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(130px, .8fr) repeat(3, minmax(150px, 1fr)) minmax(110px, .6fr)", gap: 10, alignItems: "end", overflowX: "auto", paddingBottom: 2 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".04em" }}>Fokusområde</div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".04em" }}>Ukens mål</div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".04em" }}>Faktisk input</div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".04em" }}>Output</div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".04em" }}>Suksess</div>
+        {items.map((item) => (
+          <div key={item.id} style={{ display: "contents" }}>
+            <div style={{ minHeight: 42, display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 800, whiteSpace: "nowrap" }}>
+              <span className={`dot ${item.status}`} />
+              {item.label}
+            </div>
+            {(["target", "input", "output"] as const).map((field) => (
+              <input
+                key={field}
+                value={item[field]}
+                onChange={(event) => updateItem(item.id, field, event.target.value)}
+                placeholder={field === "output" ? "F.eks. 2 nye kunder" : "Registrer her"}
+                aria-label={`${item.label}: ${field}`}
+                style={{ minWidth: 150, height: 42, border: "1px solid var(--hairline)", borderRadius: 8, background: "var(--hairline-2)", padding: "0 11px", font: "inherit", fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}
+              />
+            ))}
+            <select
+              value={item.status}
+              onChange={(event) => updateItem(item.id, "status", event.target.value)}
+              aria-label={`${item.label}: suksessstatus`}
+              style={{ minWidth: 110, height: 42, border: "1px solid var(--hairline)", borderRadius: 8, padding: "0 10px", font: "inherit", fontSize: 13.5, fontWeight: 800, color: `var(--${item.status})`, background: `var(--${item.status}-soft)` }}
+            >
+              {(["red", "yellow", "green"] as const).map((status) => <option key={status} value={status}>{statusLabel[status]}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -441,6 +553,8 @@ export default function TabOversikt({ period = 3 }: { period?: number }) {
           </div>
         </div>
       </div>
+
+      <WeeklyFocusBoard />
 
       {/* Row 2: Salg + Møter & Wins */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 14, alignItems: "stretch" }}>
