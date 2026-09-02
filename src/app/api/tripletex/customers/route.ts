@@ -1,36 +1,18 @@
 import { NextResponse } from "next/server"
-import { TRIPLETEX_BASE as BASE, fmtDate as fmt, createTripletexSession } from "@/lib/tripletex"
+import { TRIPLETEX_BASE as BASE, fmtDate as fmt, createTripletexSession, fetchAllInvoices } from "@/lib/tripletex"
 
-// Pull all invoices in [from, to], paginating, and sum revenue per customer id.
+// Revenue per customer over the window. The shared fetch handles Tripletex's
+// exclusive end date and caches the result across routes.
 async function revenueByCustomer(
   authHeader: string,
   from: string,
   to: string
 ): Promise<Map<number, number>> {
   const sums = new Map<number, number>()
-  const pageSize = 1000
-  let offset = 0
-
-  // Bounded loop so a runaway response can never hang the route.
-  for (let page = 0; page < 20; page++) {
-    const res = await fetch(
-      `${BASE}/invoice?invoiceDateFrom=${from}&invoiceDateTo=${to}` +
-        `&from=${offset}&count=${pageSize}&fields=amountExcludingVat,amount,customer(id)`,
-      { headers: { Authorization: authHeader } }
-    )
-    if (!res.ok) break
-    const data = await res.json()
-    const values: any[] = data.values ?? []
-    for (const inv of values) {
-      const id: number | undefined = inv.customer?.id
-      if (id == null) continue
-      const amount: number = inv.amountExcludingVat ?? inv.amount ?? 0
-      sums.set(id, (sums.get(id) ?? 0) + amount)
-    }
-    if (values.length < pageSize) break
-    offset += pageSize
+  for (const inv of await fetchAllInvoices(authHeader, from, to, 20)) {
+    if (inv.customerId == null) continue
+    sums.set(inv.customerId, (sums.get(inv.customerId) ?? 0) + inv.amount)
   }
-
   return sums
 }
 

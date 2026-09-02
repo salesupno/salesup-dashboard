@@ -555,11 +555,13 @@ function WeeklyFocusBoard() {
 // ---- Salg: how much, where from, and who ----
 function SalesCard({
   data,
+  error,
   label,
   newCustomers,
   closeRate,
 }: {
   data: InvoiceSummary
+  error: string
   label: string
   newCustomers: number
   closeRate: number
@@ -628,7 +630,11 @@ function SalesCard({
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--ink)" }}>Hvor kom omsetningen fra</span>
 
-        {present.length === 0 ? (
+        {error ? (
+          <div style={{ fontSize: 13, color: "var(--red)", fontWeight: 700, background: "var(--red-soft)", borderRadius: 12, padding: "10px 13px" }}>
+            Kunne ikke hente fakturaer fra Tripletex — {error}
+          </div>
+        ) : present.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 600 }}>Ingen fakturaer i perioden.</div>
         ) : (
           present.map((c) => {
@@ -896,6 +902,7 @@ export default function TabOversikt({ period = DEFAULT_PERIOD }: { period?: Peri
   const [meetingTags, setMeetingTags] = useState<Record<string, MeetingCategory>>({})
   const [conversions, setConversions] = useState<Record<string, boolean>>({})
   const [invoices, setInvoices] = useState<InvoiceSummary>(EMPTY_INVOICES)
+  const [salesError, setSalesError] = useState("")
 
   useEffect(() => {
     const onStorage = (ev: StorageEvent) => {
@@ -909,34 +916,33 @@ export default function TabOversikt({ period = DEFAULT_PERIOD }: { period?: Peri
   }, [])
 
   useEffect(() => {
-    fetch("/api/tripletex/customers")
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d.customers)) setTripletexCustomers(d.customers) })
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    const query = periodQuery(period)
-    const window = `months=${chartKeys.length}&end=${endKey}`
-
-    fetch(`/api/tripletex/revenue?${query}`)
-      .then(r => r.json())
-      .then(d => { if (d.omsMnd != null) setLiveRevenue({ omsMnd: d.omsMnd, omsMndTarget: d.omsMndTarget, mrr: d.mrr, mrrTarget: d.mrrTarget }) })
-      .catch(() => {})
-    fetch(`/api/tripletex/invoices?${query}`)
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d.categories)) setInvoices(d as InvoiceSummary) })
-      .catch(() => {})
-    fetch(`/api/calendar/meetings?${window}`)
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d.allEvents)) setCalendarEvents(d.allEvents) })
-      .catch(() => {})
-    fetch(`/api/tripletex/wins?${window}`)
+    // One Tripletex call for revenue, invoices, wins and customers: separate
+    // routes are separate serverless instances, and Tripletex rejects concurrent
+    // session creation with 409, which used to blank out the Salg card.
+    setSalesError("")
+    fetch(`/api/tripletex/summary?${periodQuery(period)}&chartMonths=${chartKeys.length}`)
       .then(r => r.json())
       .then(d => {
-        if (Array.isArray(d.monthly)) setWinsByMonth(d.monthly)
-        if (Array.isArray(d.newCustomers)) setNewCustomers(d.newCustomers)
+        if (d.source !== "tripletex") {
+          setSalesError(d.reason || "Kunne ikke hente tall fra Tripletex")
+          return
+        }
+        setLiveRevenue({
+          omsMnd: d.revenue.omsMnd,
+          omsMndTarget: d.revenue.omsMndTarget,
+          mrr: d.revenue.mrr,
+          mrrTarget: d.revenue.mrrTarget,
+        })
+        setInvoices(d.invoices as InvoiceSummary)
+        setWinsByMonth(d.wins)
+        setNewCustomers(d.newCustomers)
+        setTripletexCustomers(d.customers)
       })
+      .catch((err) => setSalesError(err instanceof Error ? err.message : "Nettverksfeil"))
+
+    fetch(`/api/calendar/meetings?months=${chartKeys.length}&end=${endKey}`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.allEvents)) setCalendarEvents(d.allEvents) })
       .catch(() => {})
     // periodId captures both the window and the selected months.
   }, [periodId, chartKeys.length, endKey])
@@ -1153,6 +1159,7 @@ export default function TabOversikt({ period = DEFAULT_PERIOD }: { period?: Peri
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 14, alignItems: "stretch" }}>
         <SalesCard
           data={invoices}
+          error={salesError}
           label={label}
           newCustomers={periodWins}
           closeRate={closeRate}
