@@ -243,7 +243,7 @@ function GoalBoard() {
         <span className="spill green" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".06em" }}>GRØNN</span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${goals.length}, 1fr)`, gap: 16 }}>
         {goals.map((g, i) => {
           const pct = g.target ? g.current / g.target : 0
           return (

@@ -13,7 +13,6 @@ export const META = {
 export const GOALS_SEED: GoalItem[] = [
   { id: "seo",  short: "SEO/ADS-retainere", current: 7,  target: 15, series: [3, 4, 5, 5, 6, 7] },
   { id: "proj", short: "Prosjekter 2026",   current: 23, target: 60, series: [8, 13, 17, 20, 22, 23] },
-  { id: "mynk", short: "Mynk-kunder",       current: 0,  target: 100, series: [0, 0, 0, 0, 0, 0] },
 ]
 
 // ---- Revenue (from Tripletex) ----
